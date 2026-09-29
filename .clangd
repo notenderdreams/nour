@@ -1,0 +1,29 @@
+CompileFlags:
+  Add:
+    - -std=c11
+    - -Iinclude
+    - -Isrc
+    - -Isandbox/include
+    - -Wall
+    - -Wextra
+    - -D_POSIX_C_SOURCE=200809L
+  Remove:
+    - -xobjective-c++-header
+    - -std=c++*
+    - -std=gnu++*
+
+---
+If:
+  PathMatch: .*\.h$
+CompileFlags:
+  Add:
+    - -xc-header
+
+---
+If:
+  PathMatch: .*\.nour$
+CompileFlags:
+  Add:
+    - -xc
+Diagnostics:
+  Suppress: ["*"]

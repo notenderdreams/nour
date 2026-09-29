@@ -1,0 +1,12 @@
+Executable sandbox_app = {
+    .sources  = {
+        "src/*.c"
+    },
+    .includes = { "include" },
+    .cflags   = { "-Wall", "-Wextra" },
+};
+
+Project SandboxProject = {
+	.version = "0.1.0",
+	.targets = { &sandbox_app },
+};

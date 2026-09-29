@@ -1,0 +1,18 @@
+Executable nour = {
+	.sources  = { "src/*.c" },
+	.includes = { "include" },
+	.defines  = { "_POSIX_C_SOURCE=200809L" },
+	.cflags   = {
+		"-O2",
+		"-Wall",
+		"-Wextra",
+		"-std=c11",
+	},
+	.ldflags  = { "-ldl" },
+};
+
+Project Nour = {
+	.version   = "0.1.0",
+	.build_dir = "bin",
+	.targets   = { &nour },
+};

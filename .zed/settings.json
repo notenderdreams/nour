@@ -1,0 +1,16 @@
+{
+  "file_types": {
+    "C": [
+      "c",
+      "h",
+      "*.nour"
+    ]
+  },
+  "languages": {
+    "C": {
+      "format_on_save": "on",
+      "tab_size": 4,
+      "hard_tabs": true
+    }
+  }
+}

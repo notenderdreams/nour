@@ -1,0 +1,27 @@
+# Build outputs
+bin/
+build/
+sandbox/build/
+nour
+
+# Compiled objects & libraries
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# macOS debug symbol bundles
+*.dSYM/
+
+# Generated header (baked-in by justfile / xxd)
+src/nour_header.h
+
+# Clang / LSP caches
+.cache/
+compile_commands.json
+
+# OS files
+.DS_Store
+Thumbs.db

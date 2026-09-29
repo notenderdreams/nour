@@ -1,0 +1,6 @@
+-std=c11
+-Iinclude
+-Isrc
+-Wall
+-Wextra
+-D_POSIX_C_SOURCE=200809L
