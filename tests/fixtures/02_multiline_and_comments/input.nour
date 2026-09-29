@@ -1,0 +1,17 @@
+// Main configuration
+Executable server = {
+	// Source glob
+	.sources = {
+		"src/server.c",
+		"src/net.c",
+	},
+	.cflags = {
+		"-Wall",
+		"-Wextra",
+		"-std=c11",
+	},
+};
+
+Project ServerProject = {
+	.targets = { &server },
+};

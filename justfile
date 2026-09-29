@@ -18,6 +18,20 @@ run: build
 self: build
 	./bin/nour
 
+test_flags := "-fsanitize=address,undefined -DFIXTURES_DIR='\"tests/fixtures\"'"
+
+test: gen
+	mkdir -p bin
+	{{cc}} {{cflags}} {{test_flags}} -Isrc -Itests -D_DARWIN_C_SOURCE=1 src/parser.c src/loader.c src/utils.c src/builder.c tests/*.c -o bin/nour_test {{ldflags}}
+	./bin/nour_test
+
+test-bless: gen
+	mkdir -p bin
+	{{cc}} {{cflags}} {{test_flags}} -Isrc -Itests -D_DARWIN_C_SOURCE=1 src/parser.c src/loader.c src/utils.c src/builder.c tests/*.c -o bin/nour_test {{ldflags}}
+	NOUR_TEST_BLESS=1 ./bin/nour_test
+
+
 clean:
-    rm -rf bin build sandbox/build nour
+    rm -rf bin build sandbox/build nour tests/fixtures/*/actual.c
     rm -f src/nour_header.h
+

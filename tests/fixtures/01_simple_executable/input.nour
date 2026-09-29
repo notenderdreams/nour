@@ -1,0 +1,13 @@
+Executable app = {
+	.sources  = { "src/*.c" },
+	.includes = { "include" },
+	.defines  = { "DEBUG" },
+	.cflags   = { "-O0", "-g" },
+	.ldflags  = { "-lm" },
+};
+
+Project AppProject = {
+	.version   = "0.1.0",
+	.build_dir = "build",
+	.targets   = { &app },
+};

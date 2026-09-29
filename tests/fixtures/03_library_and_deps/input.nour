@@ -1,0 +1,13 @@
+Library core = {
+	.type    = STATIC,
+	.sources = { "core/*.c" },
+};
+
+Executable client = {
+	.sources = { "client/*.c" },
+	.deps    = { &core },
+};
+
+Project FullProject = {
+	.targets = { &core, &client },
+};
