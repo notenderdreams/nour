@@ -1,5 +1,7 @@
 Executable nour = {
+	.root     = "src/main.c",
 	.sources  = { "src/*.c" },
+
 	.includes = { "include" },
 	.defines  = { "_POSIX_C_SOURCE=200809L" },
 	.cflags   = {

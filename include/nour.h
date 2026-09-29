@@ -27,6 +27,7 @@ struct Target {
 struct Executable {
     TargetKind   kind;
     const char  *name;
+    const char  *root;
     const char **sources;
     const char **includes;
     const char **defines;
@@ -34,6 +35,7 @@ struct Executable {
     const char **ldflags;
     void       **deps;
 };
+
 
 struct Library {
     TargetKind   kind;

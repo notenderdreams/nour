@@ -1,5 +1,7 @@
 Executable sandbox_app = {
+    .root     = "src/main.c",
     .sources  = {
+
         "src/*.c"
     },
     .includes = { "include" },

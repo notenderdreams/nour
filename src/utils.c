@@ -28,11 +28,18 @@ void print_project(const Project *proj)
 		const char	*kind_str = "unknown";
 		const char **sources  = NULL;
 
+		char kind_buf[128];
 		if (target->kind == T_EXECUTABLE) {
 			Executable *exe = (Executable *)target;
-			kind_str		= "executable";
-			sources			= exe->sources;
+			if (exe->root && exe->root[0]) {
+				snprintf(kind_buf, sizeof(kind_buf), "executable (root: %s)", exe->root);
+				kind_str = kind_buf;
+			} else {
+				kind_str = "executable";
+			}
+			sources = exe->sources;
 		} else if (target->kind == T_LIBRARY) {
+
 			Library *lib = (Library *)target;
 			switch (lib->type) {
 			case SHARED:

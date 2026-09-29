@@ -25,10 +25,48 @@ static bool cmd_append(char *buf, usize cap, usize *off, const char *fmt, ...)
 	return true;
 }
 
+#include <unistd.h>
+
+static const char *resolve_executable_root(const Executable *exe, const char *project_dir)
+{
+	if (exe->root && exe->root[0]) {
+		char path[512];
+		snprintf(path, sizeof(path), "%s/%s", project_dir, exe->root);
+		if (access(path, F_OK) != 0) {
+			return NULL;
+		}
+		return exe->root;
+	}
+
+	char path[512];
+	snprintf(path, sizeof(path), "%s/src/main.c", project_dir);
+	if (access(path, F_OK) == 0) {
+		return "src/main.c";
+	}
+
+	snprintf(path, sizeof(path), "%s/main.c", project_dir);
+	if (access(path, F_OK) == 0) {
+		return "main.c";
+	}
+
+	return NULL;
+}
+
 static Result build_executable(const Executable *exe, const Project *proj, const char *project_dir)
 {
 	const char *cc		  = (proj->cc && proj->cc[0]) ? proj->cc : "cc";
 	const char *build_dir = project_build_dir(proj);
+
+	const char *root = resolve_executable_root(exe, project_dir);
+	if (exe->root && !root) {
+		return Err("Target '%s': root file '%s' not found", exe->name, exe->root);
+	}
+
+	char full_root_path[512] = { 0 };
+	if (root) {
+		snprintf(full_root_path, sizeof(full_root_path), "%s/%s", project_dir, root);
+	}
+	bool root_appended = false;
 
 	char out_path[512];
 	snprintf(out_path, sizeof(out_path), "%s/%s/%s", project_dir, build_dir, exe->name);
@@ -65,34 +103,48 @@ static Result build_executable(const Executable *exe, const Project *proj, const
 	}
 
 	// Source files
-	if (!exe->sources || !exe->sources[0]) {
+	if ((!exe->sources || !exe->sources[0]) && !root) {
 		return Err("Target '%s' has no sources specified", exe->name);
 	}
 
 	usize total_sources = 0;
-	for (const char **src = exe->sources; *src; ++src) {
-		char pattern[512];
-		snprintf(pattern, sizeof(pattern), "%s/%s", project_dir, *src);
+	if (exe->sources) {
+		for (const char **src = exe->sources; *src; ++src) {
+			char pattern[512];
+			snprintf(pattern, sizeof(pattern), "%s/%s", project_dir, *src);
 
-		glob_t g;
-		i32	   ret = glob(pattern, 0, NULL, &g);
-		if (ret) {
-			return Err("Target '%s': no files found matching '%s'", exe->name, *src);
-		}
-
-		for (usize k = 0; k < (usize)g.gl_pathc; ++k) {
-			if (!cmd_append(cmd, sizeof(cmd), &offset, " \"%s\"", g.gl_pathv[k])) {
-				globfree(&g);
-				return Err("Target '%s': command line too long", exe->name);
+			glob_t g;
+			i32	   ret = glob(pattern, 0, NULL, &g);
+			if (ret) {
+				return Err("Target '%s': no files found matching '%s'", exe->name, *src);
 			}
-			++total_sources;
+
+			for (usize k = 0; k < (usize)g.gl_pathc; ++k) {
+				if (root && strcmp(g.gl_pathv[k], full_root_path) == 0) {
+					root_appended = true;
+				}
+				if (!cmd_append(cmd, sizeof(cmd), &offset, " \"%s\"", g.gl_pathv[k])) {
+					globfree(&g);
+					return Err("Target '%s': command line too long", exe->name);
+				}
+				++total_sources;
+			}
+			globfree(&g);
 		}
-		globfree(&g);
+	}
+
+	// If root wasn't already in sources glob, append it
+	if (root && !root_appended) {
+		if (!cmd_append(cmd, sizeof(cmd), &offset, " \"%s\"", full_root_path)) {
+			return Err("Target '%s': command line too long", exe->name);
+		}
+		++total_sources;
 	}
 
 	if (!total_sources) {
 		return Err("Target '%s': zero source files resolved", exe->name);
 	}
+
 
 	// Link flags
 	if (exe->ldflags) {
