@@ -1,5 +1,8 @@
 #include "loader.h"
+#include "nour.h"
+
 #include <dlfcn.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -9,7 +12,7 @@ typedef Project *(*NourGetProjectFn)(void);
 
 Result compile_nour(const char *src, const char *dest)
 {
-	char cmd[1024];
+	char cmd[PATH_MAX * 2 + 64];
 	snprintf(cmd, sizeof(cmd), "cc -shared -fPIC \"%s\" -o \"%s\"", src, dest);
 
 	i32 ret = system(cmd);

@@ -15,10 +15,11 @@
 static char *read_file_to_string(const char *path)
 {
 	FILE *f = fopen(path, "rb");
-	if (!f) return NULL;
+	if (!f)
+		return NULL;
 
 	fseek(f, 0, SEEK_END);
-	long size = ftell(f);
+	i64 size = ftell(f);
 	fseek(f, 0, SEEK_SET);
 
 	if (size < 0) {
@@ -32,24 +33,25 @@ static char *read_file_to_string(const char *path)
 		return NULL;
 	}
 
-	size_t read_bytes = fread(buf, 1, size, f);
-	buf[read_bytes] = '\0';
+	usize read_bytes = fread(buf, 1, size, f);
+	buf[read_bytes]	 = '\0';
 	fclose(f);
 	return buf;
 }
 
-static int compare_strings(const void *a, const void *b)
+static i32 compare_strings(const void *a, const void *b)
 {
 	const char *const *sa = a;
 	const char *const *sb = b;
 	return strcmp(*sa, *sb);
 }
 
-static void first_diff(const char *a, const char *b, char *out, size_t cap)
+static void first_diff(const char *a, const char *b, char *out, usize cap)
 {
-	int line = 1;
+	i32 line = 1;
 	while (*a && *a == *b) {
-		if (*a == '\n') ++line;
+		if (*a == '\n')
+			++line;
 		++a;
 		++b;
 	}
@@ -59,20 +61,23 @@ static void first_diff(const char *a, const char *b, char *out, size_t cap)
 void run_snapshot_tests(const char *filter)
 {
 	const char *fixtures_dir = FIXTURES_DIR;
-	DIR        *dir          = opendir(fixtures_dir);
+	DIR		   *dir			 = opendir(fixtures_dir);
 	if (!dir) {
 		SUITE_BEGIN("Snapshots");
-		record_test_result("fixtures_directory", 0, false, "fixtures directory not found", fixtures_dir, 0);
+		record_test_result(
+			"fixtures_directory", 0, false, "fixtures directory not found", fixtures_dir, 0
+		);
 		SUITE_END();
 		return;
 	}
 
 	char *names[MAX_CASES];
-	int   name_count = 0;
+	i32	  name_count = 0;
 
 	struct dirent *entry;
 	while ((entry = readdir(dir)) != NULL) {
-		if (entry->d_name[0] == '.') continue;
+		if (entry->d_name[0] == '.')
+			continue;
 
 		char subpath[512];
 		snprintf(subpath, sizeof(subpath), "%s/%s", fixtures_dir, entry->d_name);
@@ -88,15 +93,17 @@ void run_snapshot_tests(const char *filter)
 
 	qsort(names, name_count, sizeof(char *), compare_strings);
 
-	const char *bless_env  = getenv("NOUR_TEST_BLESS");
-	bool        bless_mode = (bless_env && (strcmp(bless_env, "1") == 0 || strcmp(bless_env, "true") == 0));
+	const char *bless_env = getenv("NOUR_TEST_BLESS");
+	bool		bless_mode =
+		(bless_env && (strcmp(bless_env, "1") == 0 || strcmp(bless_env, "true") == 0));
 
 	const char *tmp = getenv("TMPDIR");
-	if (!tmp || !*tmp) tmp = "/tmp";
+	if (!tmp || !*tmp)
+		tmp = "/tmp";
 
 	SUITE_BEGIN("Snapshots");
 
-	for (int i = 0; i < name_count; ++i) {
+	for (i32 i = 0; i < name_count; ++i) {
 		const char *fixture_name = names[i];
 
 		if (filter && !strstr("Snapshots", filter) && !strstr(fixture_name, filter)) {
@@ -106,17 +113,25 @@ void run_snapshot_tests(const char *filter)
 
 		char input_path[512], expected_path[512], actual_path[512];
 		snprintf(input_path, sizeof(input_path), "%s/%s/input.nour", fixtures_dir, fixture_name);
-		snprintf(expected_path, sizeof(expected_path), "%s/%s/expected.c", fixtures_dir, fixture_name);
-		snprintf(actual_path, sizeof(actual_path), "%s/nour_snap_%s_%d_actual.c", tmp, fixture_name, getpid());
+		snprintf(
+			expected_path, sizeof(expected_path), "%s/%s/expected.c", fixtures_dir, fixture_name
+		);
+		snprintf(
+			actual_path, sizeof(actual_path), "%s/nour_snap_%s_%d_actual.c", tmp, fixture_name,
+			getpid()
+		);
 
-		uint64_t start_ns = tf_time_ns();
-		bool     passed   = true;
-		char     err_buf[256] = { 0 };
+		u64	 start_ns	  = tf_time_ns();
+		bool passed		  = true;
+		char err_buf[256] = { 0 };
 
 		Result res = preprocess(input_path, actual_path);
 		if (!res.ok) {
 			passed = false;
-			snprintf(err_buf, sizeof(err_buf), "Preprocess failed: %s", res.error ? res.error : "(unknown)");
+			snprintf(
+				err_buf, sizeof(err_buf), "Preprocess failed: %s",
+				res.error ? res.error : "(unknown)"
+			);
 			result_free(&res);
 		} else {
 			char *actual_content   = read_file_to_string(actual_path);
@@ -148,7 +163,7 @@ void run_snapshot_tests(const char *filter)
 			remove(actual_path);
 		}
 
-		double ms = (double)(tf_time_ns() - start_ns) / 1000000.0;
+		f64 ms = (f64)(tf_time_ns() - start_ns) / 1000000.0;
 		record_test_result(fixture_name, ms, passed, err_buf, expected_path, 0);
 		free(names[i]);
 	}

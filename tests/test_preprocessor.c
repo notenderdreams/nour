@@ -10,11 +10,8 @@ TEST(Preprocessor, simple_executable)
 		"Project SimpleProj = {\n"
 		"    .targets = { &app },\n"
 		"};\n",
-		".kind = T_EXECUTABLE,",
-		".name = \"app\",",
-		"(const char*[]){ \"src/main.c\" , NULL }",
-		".name = \"SimpleProj\",",
-		"(void*[]){ &app , NULL }",
+		".kind = T_EXECUTABLE,", ".name = \"app\",", "(const char*[]){ \"src/main.c\" , NULL }",
+		".name = \"SimpleProj\",", "(void*[]){ &app , NULL }",
 		"Project *nour_get_project(void) { return &SimpleProj; }"
 	);
 }
@@ -29,9 +26,7 @@ TEST(Preprocessor, executable_with_root)
 		"Project P = {\n"
 		"    .targets = { &app },\n"
 		"};\n",
-		".kind = T_EXECUTABLE,",
-		".name = \"app\",",
-		".root = \"src/main.c\",",
+		".kind = T_EXECUTABLE,", ".name = \"app\",", ".root = \"src/main.c\",",
 		"(const char*[]){ \"src/utils.c\" , NULL }"
 	);
 }
@@ -51,9 +46,7 @@ TEST(Preprocessor, library_and_deps)
 		"Project LibProj = {\n"
 		"    .targets = { &math, &app },\n"
 		"};\n",
-		".kind = T_LIBRARY,",
-		".name = \"math\",",
-		".deps = (void*[]){ &math , NULL }",
+		".kind = T_LIBRARY,", ".name = \"math\",", ".deps = (void*[]){ &math , NULL }",
 		"(void*[]){ &math, &app , NULL }"
 	);
 }
@@ -70,8 +63,7 @@ TEST(Preprocessor, multiline_array)
 		"Project P = {\n"
 		"    .targets = { &app },\n"
 		"};\n",
-		"(const char*[]){\n",
-		"NULL\n\t}"
+		"(const char*[]){\n", "NULL\n\t}"
 	);
 }
 
@@ -97,8 +89,7 @@ TEST(Preprocessor, trailing_comma)
 		"Project P = {\n"
 		"    .targets = { &app },\n"
 		"};\n",
-		"(const char*[]){ \"src/main.c\",",
-		"NULL }"
+		"(const char*[]){ \"src/main.c\",", "NULL }"
 	);
 }
 
@@ -114,9 +105,7 @@ TEST(Preprocessor, comments)
 		"Project P = {\n"
 		"    .targets = { &app },\n"
 		"};\n",
-		"// Comment above\n",
-		"// Comment inside struct\n",
-		"// Comment between declarations\n"
+		"// Comment above\n", "// Comment inside struct\n", "// Comment between declarations\n"
 	);
 }
 

@@ -64,7 +64,6 @@ TEST(Loader, end_to_end_project)
 	ASSERT_STR_EQ(exe->sources[1], "src/utils.c");
 	ASSERT_NULL(exe->sources[2]);
 
-
 	// Includes & cflags
 	ASSERT_NOT_NULL(exe->includes);
 	ASSERT_STR_EQ(exe->includes[0], "include");
@@ -100,4 +99,31 @@ TEST(Loader, fails_on_invalid_c_compilation)
 	Result res;
 	TEST_SILENT(res = compile_nour(bad_c, out_so));
 	ASSERT_RESULT_ERR(res);
+}
+
+static Result helper_unwrap_ok(void)
+{
+	static i32 val = 99;
+	Result	   r   = Ok(&val);
+	i32		  *p   = Unwrap(r);
+	if (*p != 99)
+		return Err("mismatch");
+	return Ok(p);
+}
+
+static Result helper_unwrap_err(void)
+{
+	Result r = Err("simulated failure");
+	i32	  *p = Unwrap(r);
+	(void)p;
+	return Ok(NULL);
+}
+
+TEST(Loader, unwrap_macro)
+{
+	Result r1 = helper_unwrap_ok();
+	ASSERT_RESULT_OK(r1);
+	ASSERT_EQ(*(i32 *)r1.value, 99);
+
+	ASSERT_RESULT_ERR_CONTAINS(helper_unwrap_err(), "simulated failure");
 }

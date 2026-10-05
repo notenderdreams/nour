@@ -1,13 +1,17 @@
 #include "builder.h"
+#include "fs.h"
 #include "utils.h"
+
 #include <glob.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
-__attribute__((format(printf, 4, 5)))
-static bool cmd_append(char *buf, usize cap, usize *off, const char *fmt, ...)
+__attribute__((format(printf, 4, 5))) static bool
+cmd_append(char *buf, usize cap, usize *off, const char *fmt, ...)
 {
 	if (*off >= cap)
 		return false;
@@ -25,12 +29,10 @@ static bool cmd_append(char *buf, usize cap, usize *off, const char *fmt, ...)
 	return true;
 }
 
-#include <unistd.h>
-
 static const char *resolve_executable_root(const Executable *exe, const char *project_dir)
 {
 	if (exe->root && exe->root[0]) {
-		char path[512];
+		char path[PATH_MAX];
 		snprintf(path, sizeof(path), "%s/%s", project_dir, exe->root);
 		if (access(path, F_OK) != 0) {
 			return NULL;
@@ -38,7 +40,7 @@ static const char *resolve_executable_root(const Executable *exe, const char *pr
 		return exe->root;
 	}
 
-	char path[512];
+	char path[PATH_MAX];
 	snprintf(path, sizeof(path), "%s/src/main.c", project_dir);
 	if (access(path, F_OK) == 0) {
 		return "src/main.c";
@@ -62,13 +64,13 @@ static Result build_executable(const Executable *exe, const Project *proj, const
 		return Err("Target '%s': root file '%s' not found", exe->name, exe->root);
 	}
 
-	char full_root_path[512] = { 0 };
+	char full_root_path[PATH_MAX] = { 0 };
 	if (root) {
 		snprintf(full_root_path, sizeof(full_root_path), "%s/%s", project_dir, root);
 	}
 	bool root_appended = false;
 
-	char out_path[512];
+	char out_path[PATH_MAX];
 	snprintf(out_path, sizeof(out_path), "%s/%s/%s", project_dir, build_dir, exe->name);
 
 	char  cmd[4096];
@@ -110,7 +112,7 @@ static Result build_executable(const Executable *exe, const Project *proj, const
 	usize total_sources = 0;
 	if (exe->sources) {
 		for (const char **src = exe->sources; *src; ++src) {
-			char pattern[512];
+			char pattern[PATH_MAX];
 			snprintf(pattern, sizeof(pattern), "%s/%s", project_dir, *src);
 
 			glob_t g;
@@ -145,7 +147,6 @@ static Result build_executable(const Executable *exe, const Project *proj, const
 		return Err("Target '%s': zero source files resolved", exe->name);
 	}
 
-
 	// Link flags
 	if (exe->ldflags) {
 		for (const char **ld = exe->ldflags; *ld; ++ld) {
@@ -163,25 +164,38 @@ static Result build_executable(const Executable *exe, const Project *proj, const
 	return Ok(NULL);
 }
 
-Result build_project(const Project *proj, const char *project_dir)
+Result build_project_target(const Project *proj, const char *project_dir, const char *target_name)
 {
 	if (!proj->targets) {
 		return Ok(NULL);
 	}
 
 	const char *build_dir = project_build_dir(proj);
-	char		mkdir_cmd[1024];
-	snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p \"%s/%s\"", project_dir, build_dir);
-	i32 ret = system(mkdir_cmd);
-	if (ret) {
-		return Err("Failed to create build directory '%s/%s'", project_dir, build_dir);
+	char		build_path[PATH_MAX];
+	snprintf(build_path, sizeof(build_path), "%s/%s", project_dir, build_dir);
+	Try(fs_create_dir(build_path));
+
+	if (target_name && target_name[0]) {
+		for (usize i = 0; proj->targets[i]; ++i) {
+			Target *target = (Target *)proj->targets[i];
+			if (strcmp(target->name, target_name) == 0) {
+				if (target->kind == T_EXECUTABLE) {
+					return build_executable((Executable *)target, proj, project_dir);
+				} else if (target->kind == T_LIBRARY) {
+					return Err("Target '%s': library builds are not yet implemented", target->name);
+				} else {
+					return Err("Target '%s': unknown target kind", target->name);
+				}
+			}
+		}
+		return Err("Target '%s' not found in project '%s'", target_name, proj->name);
 	}
 
 	for (usize i = 0; proj->targets[i]; ++i) {
 		Target *target = (Target *)proj->targets[i];
 
 		if (target->kind == T_EXECUTABLE) {
-			TRY(build_executable((Executable *)target, proj, project_dir));
+			Try(build_executable((Executable *)target, proj, project_dir));
 		} else if (target->kind == T_LIBRARY) {
 			return Err("Target '%s': library builds are not yet implemented", target->name);
 		} else {
@@ -190,4 +204,9 @@ Result build_project(const Project *proj, const char *project_dir)
 	}
 
 	return Ok(NULL);
+}
+
+Result build_project(const Project *proj, const char *project_dir)
+{
+	return build_project_target(proj, project_dir, NULL);
 }

@@ -1,5 +1,7 @@
 #include "parser.h"
 #include "nour_header.h"
+#include "utils.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
@@ -78,14 +80,13 @@ static void attach_header(FILE *out)
 		size_t		body_len = len - (size_t)(body - header);
 		fwrite(body, 1, body_len, out);
 	}
-	fprintf(out, "\n// ─────────────────── Project Manifest ───────────────────\n");
+	fputs(section_banner("Project Manifest"), out);
 }
-
 
 static void attach_entrypoint(FILE *out, const char *project_name)
 {
 	if (project_name[0]) {
-		fprintf(out, "\n// ─────────────────── Entrypoint ───────────────────\n");
+		fputs(section_banner("Entrypoint"), out);
 		fprintf(out, "Project *nour_get_project(void) { return &%s; }\n", project_name);
 	}
 }
@@ -133,8 +134,8 @@ Result preprocess_stream(FILE *in, FILE *out, const char *source_name)
 			char	   *close_brace = find_closing_brace(open_brace + 1, NULL);
 
 			if (close_brace) {
-				*open_brace	 = '\0';
-				*close_brace = '\0';
+				*open_brace		 = '\0';
+				*close_brace	 = '\0';
 				const char *body = open_brace + 1;
 				const char *p	 = close_brace - 1;
 				while (p >= body && isspace((unsigned char)*p)) {
@@ -225,4 +226,3 @@ Result preprocess(const char *input_path, const char *output_path)
 
 	return res;
 }
-

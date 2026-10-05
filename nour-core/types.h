@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#define NOUR_VERSION "0.1.0"
+
 typedef int8_t	 i8;
 typedef uint8_t	 u8;
 typedef int32_t	 i32;
@@ -65,19 +67,19 @@ static inline void result_free(Result *res)
 	}
 }
 
-static inline bool report(Result *res)
-{
-	if (res->ok)
-		return false;
-
-	fprintf(stderr, "[ERROR] %s\n", res->error ? res->error : "unknown error");
-	result_free(res);
-	return true;
-}
-
-#define TRY(expr)           \
+#define Try(expr)           \
 	do {                    \
 		Result _r = (expr); \
 		if (!_r.ok)         \
 			return _r;      \
 	} while (0)
+
+#define Unwrap(expr)        \
+	__extension__({         \
+		Result _r = (expr); \
+		if (!_r.ok)         \
+			return _r;      \
+		_r.value;           \
+	})
+
+// TODO: impl UnwrapWithContext and TryWithContext

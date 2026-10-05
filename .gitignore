@@ -2,6 +2,8 @@
 bin/
 build/
 sandbox/build/
+.nour/
+sandbox/.nour/
 nour
 
 # Compiled objects & libraries
@@ -16,7 +18,7 @@ nour
 *.dSYM/
 
 # Generated header (baked-in by justfile / xxd)
-src/nour_header.h
+nour-core/nour_header.h
 
 # Clang / LSP caches
 .cache/

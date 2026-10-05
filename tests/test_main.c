@@ -3,7 +3,7 @@
 
 void run_snapshot_tests(const char *filter);
 
-int main(int argc, char *argv[])
+i32 main(i32 argc, char *argv[])
 {
 	const char *filter = (argc >= 2) ? argv[1] : NULL;
 

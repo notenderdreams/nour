@@ -1,8 +1,11 @@
 Executable nour = {
-	.root     = "src/main.c",
-	.sources  = { "src/*.c" },
+	.root     = "nour-cli/main.c",
+	.sources  = {
+		"nour-core/*.c",
+		"nour-cli/*.c",
+	},
 
-	.includes = { "include" },
+	.includes = { "include", ".", "nour-core", "nour-cli" },
 	.defines  = { "_POSIX_C_SOURCE=200809L" },
 	.cflags   = {
 		"-O2",

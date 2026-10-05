@@ -22,7 +22,8 @@ static void write_test_file(const char *dir, const char *relpath, const char *co
 	}
 
 	FILE *f = fopen(full, "w");
-	if (!f) abort();
+	if (!f)
+		abort();
 	fputs(content, f);
 	fclose(f);
 }
@@ -35,13 +36,13 @@ TEST(Builder, build_executable_with_explicit_root)
 	write_test_file(td.path, "src/calc.c", "int calc(void) { return 0; }\n");
 
 	Executable exe = {
-		.kind    = T_EXECUTABLE,
-		.name    = "my_app",
-		.root    = "src/entry.c",
+		.kind	 = T_EXECUTABLE,
+		.name	 = "my_app",
+		.root	 = "src/entry.c",
 		.sources = (const char *[]){ "src/calc.c", NULL },
 	};
 	Project proj = {
-		.name      = "AppProject",
+		.name	   = "AppProject",
 		.build_dir = "build",
 		.targets   = (void *[]){ &exe, NULL },
 	};
@@ -66,13 +67,13 @@ TEST(Builder, build_executable_default_root_fallback)
 	write_test_file(td.path, "src/helper.c", "int helper(void) { return 0; }\n");
 
 	Executable exe = {
-		.kind    = T_EXECUTABLE,
-		.name    = "fallback_app",
-		.root    = NULL,
+		.kind	 = T_EXECUTABLE,
+		.name	 = "fallback_app",
+		.root	 = NULL,
 		.sources = (const char *[]){ "src/helper.c", NULL },
 	};
 	Project proj = {
-		.name      = "FallbackProject",
+		.name	   = "FallbackProject",
 		.build_dir = "out",
 		.targets   = (void *[]){ &exe, NULL },
 	};
@@ -97,13 +98,13 @@ TEST(Builder, build_executable_root_in_sources_dedup)
 	write_test_file(td.path, "src/extra.c", "int extra(void) { return 0; }\n");
 
 	Executable exe = {
-		.kind    = T_EXECUTABLE,
-		.name    = "dedup_app",
-		.root    = "src/main.c",
+		.kind	 = T_EXECUTABLE,
+		.name	 = "dedup_app",
+		.root	 = "src/main.c",
 		.sources = (const char *[]){ "src/*.c", NULL },
 	};
 	Project proj = {
-		.name      = "DedupProject",
+		.name	   = "DedupProject",
 		.build_dir = "bin",
 		.targets   = (void *[]){ &exe, NULL },
 	};
@@ -127,17 +128,19 @@ TEST(Builder, build_executable_missing_root_error)
 	write_test_file(td.path, "src/foo.c", "int foo(void) { return 0; }\n");
 
 	Executable exe = {
-		.kind    = T_EXECUTABLE,
-		.name    = "missing_root_app",
-		.root    = "src/non_existent.c",
+		.kind	 = T_EXECUTABLE,
+		.name	 = "missing_root_app",
+		.root	 = "src/non_existent.c",
 		.sources = (const char *[]){ "src/foo.c", NULL },
 	};
 	Project proj = {
-		.name    = "BadRootProject",
+		.name	 = "BadRootProject",
 		.targets = (void *[]){ &exe, NULL },
 	};
 
-	ASSERT_RESULT_ERR_CONTAINS(build_project(&proj, td.path), "root file 'src/non_existent.c' not found");
+	ASSERT_RESULT_ERR_CONTAINS(
+		build_project(&proj, td.path), "root file 'src/non_existent.c' not found"
+	);
 }
 
 TEST(Builder, build_executable_no_sources_or_root_error)
@@ -145,13 +148,13 @@ TEST(Builder, build_executable_no_sources_or_root_error)
 	TMPDIR_AUTO(td);
 
 	Executable exe = {
-		.kind    = T_EXECUTABLE,
-		.name    = "empty_app",
-		.root    = NULL,
+		.kind	 = T_EXECUTABLE,
+		.name	 = "empty_app",
+		.root	 = NULL,
 		.sources = NULL,
 	};
 	Project proj = {
-		.name    = "EmptyProject",
+		.name	 = "EmptyProject",
 		.targets = (void *[]){ &exe, NULL },
 	};
 
@@ -165,17 +168,19 @@ TEST(Builder, build_executable_glob_no_match_error)
 	write_test_file(td.path, "src/main.c", "int main(void) { return 0; }\n");
 
 	Executable exe = {
-		.kind    = T_EXECUTABLE,
-		.name    = "bad_glob_app",
-		.root    = "src/main.c",
+		.kind	 = T_EXECUTABLE,
+		.name	 = "bad_glob_app",
+		.root	 = "src/main.c",
 		.sources = (const char *[]){ "src/missing_*.c", NULL },
 	};
 	Project proj = {
-		.name    = "BadGlobProject",
+		.name	 = "BadGlobProject",
 		.targets = (void *[]){ &exe, NULL },
 	};
 
-	ASSERT_RESULT_ERR_CONTAINS(build_project(&proj, td.path), "no files found matching 'src/missing_*.c'");
+	ASSERT_RESULT_ERR_CONTAINS(
+		build_project(&proj, td.path), "no files found matching 'src/missing_*.c'"
+	);
 }
 
 TEST(Builder, build_executable_compilation_failure)
@@ -185,14 +190,14 @@ TEST(Builder, build_executable_compilation_failure)
 	write_test_file(td.path, "src/main.c", "int main(void) { this is totally broken syntax }\n");
 
 	Executable exe = {
-		.kind    = T_EXECUTABLE,
-		.name    = "broken_app",
-		.root    = "src/main.c",
+		.kind	 = T_EXECUTABLE,
+		.name	 = "broken_app",
+		.root	 = "src/main.c",
 		.sources = NULL,
 	};
 	Project proj = {
-		.name    = "BrokenProject",
-		.cc      = "cc 2>/dev/null",
+		.name	 = "BrokenProject",
+		.cc		 = "cc 2>/dev/null",
 		.targets = (void *[]){ &exe, NULL },
 	};
 
@@ -209,9 +214,11 @@ TEST(Builder, build_unsupported_library_target)
 		.type = STATIC,
 	};
 	Project proj = {
-		.name    = "LibProject",
+		.name	 = "LibProject",
 		.targets = (void *[]){ &lib, NULL },
 	};
 
-	ASSERT_RESULT_ERR_CONTAINS(build_project(&proj, td.path), "library builds are not yet implemented");
+	ASSERT_RESULT_ERR_CONTAINS(
+		build_project(&proj, td.path), "library builds are not yet implemented"
+	);
 }

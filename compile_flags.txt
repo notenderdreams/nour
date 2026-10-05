@@ -1,7 +1,10 @@
 -std=c11
+-I.
 -Iinclude
--Isrc
+-Inour-core
+-Inour-cli
 -Itests
 -Wall
 -Wextra
 -D_POSIX_C_SOURCE=200809L
+

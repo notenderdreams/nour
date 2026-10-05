@@ -1,8 +1,10 @@
 CompileFlags:
   Add:
     - -std=c11
+    - -I.
     - -Iinclude
-    - -Isrc
+    - -Inour-core
+    - -Inour-cli
     - -Isandbox/include
     - -Wall
     - -Wextra

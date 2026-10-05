@@ -1,7 +1,6 @@
 #pragma once
 
 #include "types.h"
-#include "nour.h"
 
 Result compile_nour(const char *src, const char *dest);
 
