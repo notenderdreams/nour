@@ -7,8 +7,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#define NOUR_VERSION "0.1.0"
-
 typedef int8_t	 i8;
 typedef uint8_t	 u8;
 typedef int32_t	 i32;

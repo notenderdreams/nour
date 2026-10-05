@@ -1,5 +1,6 @@
 -std=c11
 -I.
+-I.nour
 -Iinclude
 -Inour-core
 -Inour-cli

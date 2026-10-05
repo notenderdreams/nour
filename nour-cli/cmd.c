@@ -8,6 +8,7 @@
 #include "ui.h"
 #include "utils.h"
 
+#include <nour/config.h>
 #include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
@@ -17,11 +18,13 @@
 #include <time.h>
 #include <unistd.h>
 
-#define BUILD_FLAGS                                                        \
-	{                                                                      \
-		{ "dir", 'C', FLAG_STR, .val.s = ".", "project directory" },       \
-		{ "target", 't', FLAG_STR, .val.s = "", "specific build target" }, \
-		FLAG_END,                                                          \
+#define BUILD_FLAGS                                                                                \
+	{                                                                                              \
+		{ "dir", 'C', FLAG_STR, .val.s = ".", "project directory" },                               \
+		{ "target", 't', FLAG_STR, .val.s = "", "specific build target" },                         \
+		{ "profile", 'p', FLAG_STR, .val.s = "", "build profile (e.g. debug, release, staging)" }, \
+		{ "release", 'r', FLAG_BOOL, .val.b = false, "shorthand for --profile release" },          \
+		FLAG_END,                                                                                  \
 	}
 
 Command new_cmd = {
@@ -148,8 +151,19 @@ static f64 time_ms(void)
 	return (f64)ts.tv_sec * 1000.0 + (f64)ts.tv_nsec / 1000000.0;
 }
 
+static const char *resolve_profile(Context *ctx)
+{
+	const char *p = flag(ctx, "profile", "");
+	if (p && p[0])
+		return p;
+
+	bool is_release = flag(ctx, "release", false);
+	return is_release ? "release" : "debug";
+}
+
 static Result execute_project_build(
-	const char *project_dir, const char *target_name, char *out_bin, usize out_bin_cap
+	const char *project_dir, const char *target_name, const char *profile, char *out_bin,
+	usize out_bin_cap
 )
 {
 	char nour_path[PATH_MAX], c_path[PATH_MAX], so_path[PATH_MAX], dot_nour_dir[PATH_MAX];
@@ -199,15 +213,15 @@ static Result execute_project_build(
 	}
 
 	printf(
-		"\n  %s%sBuilding%s %s%s%s v%s\n", th.bold, th.teal, th.reset, th.white, proj->name,
-		th.reset, proj->version ? proj->version : NOUR_VERSION
+		"\n  %s%sBuilding%s %s%s%s v%s [%s]\n", th.bold, th.teal, th.reset, th.white, proj->name,
+		th.reset, proj->version ? proj->version : NOUR_VERSION, profile ? profile : "debug"
 	);
 
 	ui_tree_step(false, "preprocess manifest", pre_ms);
 	ui_tree_step(false, "load manifest [libnour.so]", comp_ms);
 
 	t0				= time_ms();
-	Result res		= build_project_target(proj, project_dir, target_name);
+	Result res		= build_project_target(proj, project_dir, target_name, profile);
 	f64	   build_ms = time_ms() - t0;
 
 	if (!res.ok) {
@@ -259,11 +273,12 @@ Result cmd_build(Context *ctx)
 {
 	const char *project_dir = flag(ctx, "dir", ".");
 	const char *target_name = flag(ctx, "target", "");
+	const char *profile		= resolve_profile(ctx);
 	if (ctx->n_args > 0)
 		project_dir = ctx->args[0];
 
 	return execute_project_build(
-		project_dir, (target_name && target_name[0]) ? target_name : NULL, NULL, 0
+		project_dir, (target_name && target_name[0]) ? target_name : NULL, profile, NULL, 0
 	);
 }
 
@@ -271,13 +286,14 @@ Result cmd_run(Context *ctx)
 {
 	const char *project_dir = flag(ctx, "dir", ".");
 	const char *target_name = flag(ctx, "target", "");
+	const char *profile		= resolve_profile(ctx);
 
 	if (strcmp(project_dir, ".") == 0 && ctx->n_args > 0) {
 		project_dir = ctx->args[0];
 	}
 
 	char bin_path[PATH_MAX] = { 0 };
-	Try(execute_project_build(project_dir, target_name, bin_path, sizeof(bin_path)));
+	Try(execute_project_build(project_dir, target_name, profile, bin_path, sizeof(bin_path)));
 
 	if (!bin_path[0]) {
 		return Err("no executable target found to run in project '%s'", project_dir);

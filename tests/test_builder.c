@@ -222,3 +222,55 @@ TEST(Builder, build_unsupported_library_target)
 		build_project(&proj, td.path), "library builds are not yet implemented"
 	);
 }
+
+TEST(Builder, generated_config_header_and_profiles)
+{
+	TMPDIR_AUTO(td);
+
+	const char *main_c =
+		"#include <nour/config.h>\n"
+		"#include <string.h>\n"
+		"int main(void) {\n"
+		"    if (strcmp(NOUR_PROJECT_NAME, \"ConfigApp\") != 0) return 1;\n"
+		"    if (strcmp(NOUR_PROJECT_VERSION, \"2.3.4\") != 0) return 2;\n"
+		"    if (NOUR_VERSION_MAJOR != 2 || NOUR_VERSION_MINOR != 3 || NOUR_VERSION_PATCH != 4) return 3;\n"
+		"    if (strcmp(NOUR_TARGET_NAME, \"config_bin\") != 0) return 4;\n"
+		"    if (strcmp(NOUR_BUILD_PROFILE, \"staging\") != 0) return 5;\n"
+		"#ifndef NOUR_PROFILE_STAGING\n"
+		"    return 6;\n"
+		"#endif\n"
+		"    return 0;\n"
+		"}\n";
+
+	write_test_file(td.path, "src/main.c", main_c);
+
+	Executable exe = {
+		.kind	 = T_EXECUTABLE,
+		.name	 = "config_bin",
+		.root	 = "src/main.c",
+		.sources = NULL,
+	};
+	Project proj = {
+		.name	   = "ConfigApp",
+		.version   = "2.3.4",
+		.build_dir = "build",
+		.targets   = (void *[]){ &exe, NULL },
+	};
+
+	Result res = build_project_target(&proj, td.path, "config_bin", "staging");
+	ASSERT_RESULT_OK(res);
+
+	// Verify header was generated on disk
+	char header_path[512];
+	snprintf(header_path, sizeof(header_path), "%s/.nour/nour/config.h", td.path);
+	ASSERT_TRUE(access(header_path, F_OK) == 0);
+
+	// Verify compiled binary runs and all assertions in main() passed
+	char bin_path[512];
+	snprintf(bin_path, sizeof(bin_path), "%s/build/config_bin", td.path);
+	ASSERT_TRUE(access(bin_path, F_OK) == 0);
+
+	char run_cmd[600];
+	snprintf(run_cmd, sizeof(run_cmd), "\"%s\"", bin_path);
+	ASSERT_EQ(system(run_cmd), 0);
+}

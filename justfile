@@ -1,11 +1,13 @@
 cc      := "cc"
-cflags  := "-O2 -Wall -Wextra -std=c11 -I. -Iinclude -Inour-core -Inour-cli -D_POSIX_C_SOURCE=200809L"
+cflags  := "-O2 -Wall -Wextra -std=c11 -I. -I.nour -Iinclude -Inour-core -Inour-cli -D_POSIX_C_SOURCE=200809L"
 ldflags := "-ldl"
 
 default: build
 
 gen:
+    mkdir -p .nour/nour
     xxd -i include/nour.h > nour-core/nour_header.h
+    test -f .nour/nour/config.h || printf '/* Bootstrap config header */\n#ifndef NOUR_CONFIG_H\n#define NOUR_CONFIG_H\n#define NOUR_PROJECT_NAME "nour"\n#define NOUR_PROJECT_VERSION "0.1.0"\n#define NOUR_VERSION NOUR_PROJECT_VERSION\n#define NOUR_PROJECT_BUILD_DIR "bin"\n#define NOUR_VERSION_MAJOR 0\n#define NOUR_VERSION_MINOR 1\n#define NOUR_VERSION_PATCH 0\n#define NOUR_TARGET_NAME "nour"\n#define NOUR_TARGET_KIND "executable"\n#define NOUR_BUILD_PROFILE "debug"\n#define NOUR_PROFILE_DEBUG 1\n#define NOUR_DEBUG 1\n#define NOUR_RELEASE 0\n#endif\n' > .nour/nour/config.h
 
 build: gen
     mkdir -p bin

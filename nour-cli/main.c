@@ -2,6 +2,8 @@
 #include "dispatch.h"
 #include "types.h"
 
+#include <nour/config.h>
+
 i32 main(i32 argc, char **argv)
 {
 	CLI cli = {
