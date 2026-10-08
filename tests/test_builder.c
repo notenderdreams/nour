@@ -24,8 +24,8 @@ static void write_test_file(const char *dir, const char *relpath, const char *co
 	FILE *f = fopen(full, "w");
 	if (!f)
 		abort();
+	defer(fclose, f);
 	fputs(content, f);
-	fclose(f);
 }
 
 TEST(Builder, build_executable_with_explicit_root)

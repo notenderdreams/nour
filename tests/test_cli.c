@@ -61,17 +61,17 @@ static bool run_cli(const char *cwd, const char *args, CliOutput *out)
 
 	FILE *f = fopen(out_file, "r");
 	if (f) {
-		usize n			   = fread(out->stdout_str, 1, sizeof(out->stdout_str) - 1, f);
+		defer(fclose, f);
+		usize n = fread(out->stdout_str, 1, sizeof(out->stdout_str) - 1, f);
 		out->stdout_str[n] = '\0';
-		fclose(f);
 	}
 	unlink(out_file);
 
 	f = fopen(err_file, "r");
 	if (f) {
-		usize n			   = fread(out->stderr_str, 1, sizeof(out->stderr_str) - 1, f);
+		defer(fclose, f);
+		usize n = fread(out->stderr_str, 1, sizeof(out->stderr_str) - 1, f);
 		out->stderr_str[n] = '\0';
-		fclose(f);
 	}
 	unlink(err_file);
 
@@ -266,17 +266,19 @@ TEST(CLI, run_forwards_arguments)
 	// Overwrite main.c with a program that prints its arguments
 	char main_file[512];
 	snprintf(main_file, sizeof(main_file), "%s/arg_tester/src/main.c", td.path);
-	FILE *f = fopen(main_file, "w");
-	ASSERT_TRUE(f != NULL);
-	fputs(
-		"#include <stdio.h>\n"
-		"int main(int argc, char *argv[]) {\n"
-		"    for (int i = 1; i < argc; ++i) printf(\"ARG[%d]: %s\\n\", i, argv[i]);\n"
-		"    return 0;\n"
-		"}\n",
-		f
-	);
-	fclose(f);
+	{
+		FILE *f = fopen(main_file, "w");
+		ASSERT_TRUE(f != NULL);
+		defer(fclose, f);
+		fputs(
+			"#include <stdio.h>\n"
+			"int main(int argc, char *argv[]) {\n"
+			"    for (int i = 1; i < argc; ++i) printf(\"ARG[%d]: %s\\n\", i, argv[i]);\n"
+			"    return 0;\n"
+			"}\n",
+			f
+		);
+	}
 
 	// Run with forwarded arguments after --
 	ASSERT_TRUE(run_cli(td.path, "run arg_tester -- apple banana \"cherry pie\"", &out));
@@ -324,17 +326,19 @@ TEST(CLI, run_forwards_existing_directory_name)
 	// Overwrite main.c to print argument
 	char main_file[PATH_MAX];
 	snprintf(main_file, sizeof(main_file), "%s/dir_arg_app/src/main.c", td.path);
-	FILE *f = fopen(main_file, "w");
-	ASSERT_TRUE(f != NULL);
-	fputs(
-		"#include <stdio.h>\n"
-		"int main(int argc, char *argv[]) {\n"
-		"    if (argc > 1) printf(\"ARG: %s\\n\", argv[1]);\n"
-		"    return 0;\n"
-		"}\n",
-		f
-	);
-	fclose(f);
+	{
+		FILE *f = fopen(main_file, "w");
+		ASSERT_TRUE(f != NULL);
+		defer(fclose, f);
+		fputs(
+			"#include <stdio.h>\n"
+			"int main(int argc, char *argv[]) {\n"
+			"    if (argc > 1) printf(\"ARG: %s\\n\", argv[1]);\n"
+			"    return 0;\n"
+			"}\n",
+			f
+		);
+	}
 
 	// Run from inside dir_arg_app forwarding 'dummy_dir'
 	ASSERT_TRUE(run_cli(project_dir, "run -- dummy_dir", &out));
@@ -353,21 +357,23 @@ TEST(CLI, clean_manifest_custom_build_dir)
 	// Change build_dir in project.nour to "custom_bin"
 	char manifest[PATH_MAX];
 	snprintf(manifest, sizeof(manifest), "%s/custom_clean_app/project.nour", td.path);
-	FILE *f = fopen(manifest, "w");
-	ASSERT_TRUE(f != NULL);
-	fputs(
-		"Executable custom_clean_app = {\n"
-		"    .root = \"src/main.c\",\n"
-		"    .sources = { \"src/*.c\" },\n"
-		"};\n\n"
-		"Project custom_clean_app_project = {\n"
-		"    .version = \"0.1.0\",\n"
-		"    .build_dir = \"custom_bin\",\n"
-		"    .targets = { &custom_clean_app },\n"
-		"};\n",
-		f
-	);
-	fclose(f);
+	{
+		FILE *f = fopen(manifest, "w");
+		ASSERT_TRUE(f != NULL);
+		defer(fclose, f);
+		fputs(
+			"Executable custom_clean_app = {\n"
+			"    .root = \"src/main.c\",\n"
+			"    .sources = { \"src/*.c\" },\n"
+			"};\n\n"
+			"Project custom_clean_app_project = {\n"
+			"    .version = \"0.1.0\",\n"
+			"    .build_dir = \"custom_bin\",\n"
+			"    .targets = { &custom_clean_app },\n"
+			"};\n",
+			f
+		);
+	}
 
 	// Build project
 	ASSERT_TRUE(run_cli(td.path, "build custom_clean_app", &out));
@@ -393,4 +399,50 @@ TEST(CLI, help_subcommand)
 	ASSERT_TRUE(run_cli(NULL, "help build", &out));
 	ASSERT_EQ(out.exit_code, 0);
 	ASSERT_STR_CONTAINS(out.stdout_str, "build — Compile the project");
+}
+
+TEST(CLI, did_you_mean_command)
+{
+	CliOutput out;
+	ASSERT_TRUE(run_cli(NULL, "bulid", &out));
+	ASSERT_EQ(out.exit_code, 1);
+	ASSERT_STR_CONTAINS(out.stderr_str, "error: unknown command 'bulid'");
+	ASSERT_STR_CONTAINS(out.stdout_str, "Did you mean 'build'?");
+
+	CliOutput out_rn;
+	ASSERT_TRUE(run_cli(NULL, "rn", &out_rn));
+	ASSERT_EQ(out_rn.exit_code, 1);
+	ASSERT_STR_CONTAINS(out_rn.stderr_str, "error: unknown command 'rn'");
+	ASSERT_STR_CONTAINS(out_rn.stdout_str, "Did you mean 'run'?");
+}
+
+TEST(CLI, did_you_mean_flag)
+{
+	CliOutput out;
+	ASSERT_TRUE(run_cli(NULL, "build --releas", &out));
+	ASSERT_EQ(out.exit_code, 1);
+	ASSERT_STR_CONTAINS(out.stderr_str, "error: unknown flag '--releas'");
+	ASSERT_STR_CONTAINS(out.stdout_str, "Did you mean '--release'?");
+}
+
+TEST(CLI, next_steps_guidance)
+{
+	TMPDIR_AUTO(td);
+	CliOutput out;
+	ASSERT_TRUE(run_cli(td.path, "new guide_app", &out));
+	ASSERT_EQ(out.exit_code, 0);
+	ASSERT_STR_CONTAINS(out.stdout_str, "Next steps:");
+	ASSERT_STR_CONTAINS(out.stdout_str, "cd guide_app");
+	ASSERT_STR_CONTAINS(out.stdout_str, "nour run");
+}
+
+TEST(CLI, flag_hints_in_help)
+{
+	CliOutput out;
+	ASSERT_TRUE(run_cli(NULL, "build --help", &out));
+	ASSERT_EQ(out.exit_code, 0);
+	ASSERT_STR_CONTAINS(out.stdout_str, "-C, --dir <path>");
+	ASSERT_STR_CONTAINS(out.stdout_str, "-t, --target <name>");
+	ASSERT_STR_CONTAINS(out.stdout_str, "-p, --profile <name>");
+	ASSERT_STR_CONTAINS(out.stdout_str, "-r, --release");
 }

@@ -23,6 +23,8 @@ typedef struct {
 	const char *error;
 } Result;
 
+#define PRINTF_FMT(fmt, args) __attribute__((format(printf, fmt, args)))
+
 static inline Result Ok(void *value)
 {
 	return (Result){
@@ -32,7 +34,7 @@ static inline Result Ok(void *value)
 	};
 }
 
-__attribute__((format(printf, 1, 2))) static inline Result Err(const char *fmt, ...)
+PRINTF_FMT(1, 2) static inline Result Err(const char *fmt, ...)
 {
 	va_list args, args_copy;
 	va_start(args, fmt);
@@ -43,9 +45,9 @@ __attribute__((format(printf, 1, 2))) static inline Result Err(const char *fmt, 
 
 	char *buf = NULL;
 	if (len >= 0) {
-		buf = malloc(len + 1);
+		buf = malloc((usize)len + 1);
 		if (buf) {
-			vsnprintf(buf, len + 1, fmt, args_copy);
+			vsnprintf(buf, (usize)len + 1, fmt, args_copy);
 		}
 	}
 	va_end(args_copy);
@@ -79,5 +81,42 @@ static inline void result_free(Result *res)
 			return _r;      \
 		_r.value;           \
 	})
+
+// Scope Cleanup (defer)
+typedef void (*defer_fn1_t)(void *);
+typedef void (*defer_fn0_t)(void);
+
+typedef struct {
+	void *fn;
+	void *arg;
+	int	  has_arg;
+} defer_entry_t;
+
+static inline void _defer_run(defer_entry_t *entry)
+{
+	if (!entry || !entry->fn)
+		return;
+	if (entry->has_arg) {
+		((defer_fn1_t)entry->fn)(entry->arg);
+	} else {
+		((defer_fn0_t)entry->fn)();
+	}
+}
+
+#define _DEFER_CONCAT2(a, b) a##b
+#define _DEFER_CONCAT(a, b)	 _DEFER_CONCAT2(a, b)
+
+#define _DEFER_1(_fn)                                                                       \
+	__attribute__((cleanup(_defer_run))) defer_entry_t _DEFER_CONCAT(_defer_, __LINE__) = { \
+		.fn = (void *)(_fn), .arg = NULL, .has_arg = 0                                      \
+	}
+
+#define _DEFER_2(_fn, _arg)                                                                 \
+	__attribute__((cleanup(_defer_run))) defer_entry_t _DEFER_CONCAT(_defer_, __LINE__) = { \
+		.fn = (void *)(_fn), .arg = (void *)(uintptr_t)(_arg), .has_arg = 1                 \
+	}
+
+#define _GET_DEFER_MACRO(_1, _2, NAME, ...) NAME
+#define defer(...)							_GET_DEFER_MACRO(__VA_ARGS__, _DEFER_2, _DEFER_1, ~)(__VA_ARGS__)
 
 // TODO: impl UnwrapWithContext and TryWithContext

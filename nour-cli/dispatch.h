@@ -25,6 +25,7 @@ typedef struct {
 		i32			i;
 	} val;
 	const char *usage;
+	const char *hint;
 	bool		required;
 	bool		_set;
 } Flag;

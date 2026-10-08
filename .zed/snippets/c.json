@@ -1,0 +1,12 @@
+{
+  "Section Banner": {
+    "prefix": "sec",
+    "body": "/* ─── $1 ─── */$0",
+    "description": "Section comment banner with cursor in the middle"
+  },
+  "Section Banner with Title": {
+    "prefix": "banner",
+    "body": "/* ─── ${1:Title} ─── */$0",
+    "description": "Section comment banner with placeholder title"
+  }
+}

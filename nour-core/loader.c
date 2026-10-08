@@ -1,5 +1,6 @@
 #include "loader.h"
 #include "nour.h"
+#include "arena.h"
 
 #include <dlfcn.h>
 #include <limits.h>
@@ -12,8 +13,8 @@ typedef Project *(*NourGetProjectFn)(void);
 
 Result compile_nour(const char *src, const char *dest)
 {
-	char cmd[PATH_MAX * 2 + 64];
-	snprintf(cmd, sizeof(cmd), "cc -shared -fPIC \"%s\" -o \"%s\"", src, dest);
+	arena_scratch(a, 512);
+	const char *cmd = rnstr_sprintf(&a, "cc -shared -fPIC \"%s\" -o \"%s\"", src, dest);
 
 	i32 ret = system(cmd);
 	if (ret) {

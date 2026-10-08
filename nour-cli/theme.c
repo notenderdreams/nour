@@ -74,16 +74,16 @@ static bool s_has_color = false;
 
 void theme_init(void)
 {
-	bool		is_tty	 = isatty(STDOUT_FILENO);
-	bool		no_color = (getenv("NO_COLOR") != NULL);
-	const char *term	 = getenv("TERM");
-	bool		dumb	 = (term && strcmp(term, "dumb") == 0);
+	bool is_tty = isatty(STDOUT_FILENO);
+	bool no_color = (getenv("NO_COLOR") != NULL);
+	const char *term = getenv("TERM");
+	bool dumb = (term && strcmp(term, "dumb") == 0);
 
 	if (is_tty && !no_color && !dumb) {
-		th			= terminal_theme;
+		th = terminal_theme;
 		s_has_color = true;
 	} else {
-		th			= plain_theme;
+		th = plain_theme;
 		s_has_color = false;
 	}
 }

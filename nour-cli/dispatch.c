@@ -1,19 +1,28 @@
 #include "dispatch.h"
+#include "str.h"
 #include "theme.h"
 #include "ui.h"
 
 #include <nour/config.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static Flag *flag_find(Flag *flags, const char *name)
+static Flag *flag_find_sv(Flag *flags, StrView name)
 {
 	for (i32 i = 0; flags && flags[i].name; ++i) {
-		if (strcmp(flags[i].name, name) == 0)
+		if (sv_eqc(name, flags[i].name))
 			return &flags[i];
 	}
 	return NULL;
+}
+
+static Flag *flag_find(Flag *flags, const char *name)
+{
+	if (!name)
+		return NULL;
+	return flag_find_sv(flags, sv_fromc(name));
 }
 
 static Flag *flag_find_short(Flag *flags, char c)
@@ -36,6 +45,85 @@ static Command *find_cmd(Command **cmds, const char *name)
 	return NULL;
 }
 
+static usize levenshtein_dist_sv(StrView s1, StrView s2)
+{
+	usize l1 = s1.len;
+	usize l2 = s2.len;
+	if (l1 == 0)
+		return l2;
+	if (l2 == 0)
+		return l1;
+
+	usize d[64][64];
+	if (l1 >= 64)
+		l1 = 63;
+	if (l2 >= 64)
+		l2 = 63;
+
+	for (usize i = 0; i <= l1; ++i)
+		d[i][0] = i;
+	for (usize j = 0; j <= l2; ++j)
+		d[0][j] = j;
+
+	for (usize i = 1; i <= l1; ++i) {
+		for (usize j = 1; j <= l2; ++j) {
+			usize cost =
+				(tolower((unsigned char)s1.data[i - 1]) == tolower((unsigned char)s2.data[j - 1])) ?
+					0 :
+					1;
+			usize del = d[i - 1][j] + 1;
+			usize ins = d[i][j - 1] + 1;
+			usize sub = d[i - 1][j - 1] + cost;
+			usize min = del < ins ? del : ins;
+			d[i][j] = sub < min ? sub : min;
+		}
+	}
+	return d[l1][l2];
+}
+
+static Command *find_closest_cmd(Command **cmds, const char *name)
+{
+	if (!cmds || !name)
+		return NULL;
+	Command *best = NULL;
+	usize best_dist = (usize)-1;
+	StrView name_sv = sv_fromc(name);
+
+	for (i32 i = 0; cmds[i]; ++i) {
+		usize d = levenshtein_dist_sv(name_sv, sv_fromc(cmds[i]->name));
+		if (d < best_dist) {
+			best_dist = d;
+			best = cmds[i];
+		}
+	}
+
+	usize threshold = name_sv.len <= 3 ? 1 : name_sv.len <= 6 ? 2 : 3;
+	if (best_dist <= threshold)
+		return best;
+	return NULL;
+}
+
+static Flag *find_closest_flag_sv(Flag *flags, StrView name)
+{
+	if (!flags || sv_empty(name))
+		return NULL;
+	Flag *best = NULL;
+	usize best_dist = (usize)-1;
+
+	for (i32 i = 0; flags[i].name; ++i) {
+		usize d = levenshtein_dist_sv(name, sv_fromc(flags[i].name));
+		if (d < best_dist) {
+			best_dist = d;
+			best = &flags[i];
+		}
+	}
+
+	usize threshold = name.len <= 3 ? 1 : name.len <= 6 ? 2 : 3;
+	if (best_dist <= threshold)
+		return best;
+	return NULL;
+}
+
 static void print_flags(Flag *flags, const char *header)
 {
 	if (!flags || !flags[0].name)
@@ -43,36 +131,87 @@ static void print_flags(Flag *flags, const char *header)
 	printf("\n%s\n", header);
 
 	for (i32 i = 0; flags[i].name; ++i) {
-		Flag *f		= &flags[i];
-		char  sh[6] = "    ";
-		if (f->shorthand)
-			snprintf(sh, sizeof(sh), "-%c, ", f->shorthand);
+		Flag *f = &flags[i];
+		const char *hint = f->hint;
+		if (!hint) {
+			if (f->type == FLAG_STR) {
+				if (strcmp(f->name, "dir") == 0)
+					hint = "<path>";
+				else if (strcmp(f->name, "target") == 0)
+					hint = "<name>";
+				else if (strcmp(f->name, "profile") == 0)
+					hint = "<name>";
+				else
+					hint = "<value>";
+			} else if (f->type == FLAG_INT) {
+				hint = "<int>";
+			} else {
+				hint = "";
+			}
+		}
 
-		const char *type_hint = f->type == FLAG_STR ? " <string>" :
-								f->type == FLAG_INT ? " <int>" :
-													  "";
+		char visible[64];
+		if (f->shorthand) {
+			if (hint[0]) {
+				snprintf(visible, sizeof(visible), "-%c, --%s %s", f->shorthand, f->name, hint);
+			} else {
+				snprintf(visible, sizeof(visible), "-%c, --%s", f->shorthand, f->name);
+			}
+		} else {
+			if (hint[0]) {
+				snprintf(visible, sizeof(visible), "    --%s %s", f->name, hint);
+			} else {
+				snprintf(visible, sizeof(visible), "    --%s", f->name);
+			}
+		}
 
-		printf(
-			"   %s%s--%-14s%s  %s%s", sh, th.teal, f->name, th.reset, f->usage ? f->usage : "",
-			type_hint
-		);
+		usize len = strlen(visible);
+		i32 pad = 24 - (i32)len;
+		if (pad < 2)
+			pad = 2;
+
+		if (f->shorthand) {
+			if (hint[0]) {
+				printf(
+					"  %s-%c, --%s%s %s%s%s%*s%s", th.teal, f->shorthand, f->name, th.reset,
+					th.slate, hint, th.reset, pad, "", f->usage ? f->usage : ""
+				);
+			} else {
+				printf(
+					"  %s-%c, --%s%s%*s%s", th.teal, f->shorthand, f->name, th.reset, pad, "",
+					f->usage ? f->usage : ""
+				);
+			}
+		} else {
+			if (hint[0]) {
+				printf(
+					"      %s--%s%s %s%s%s%*s%s", th.teal, f->name, th.reset, th.slate, hint,
+					th.reset, pad, "", f->usage ? f->usage : ""
+				);
+			} else {
+				printf(
+					"      %s--%s%s%*s%s", th.teal, f->name, th.reset, pad, "",
+					f->usage ? f->usage : ""
+				);
+			}
+		}
 
 		switch (f->type) {
 		case FLAG_BOOL:
 			if (f->val.b)
-				printf(" (default: true)");
+				printf(" %s(default: true)%s", th.slate, th.reset);
 			break;
 		case FLAG_STR:
 			if (f->val.s && *f->val.s)
-				printf(" (default: \"%s\")", f->val.s);
+				printf(" %s(default: \"%s\")%s", th.slate, f->val.s, th.reset);
 			break;
 		case FLAG_INT:
 			if (f->val.i)
-				printf(" (default: %d)", f->val.i);
+				printf(" %s(default: %d)%s", th.slate, f->val.i, th.reset);
 			break;
 		}
 		if (f->required)
-			printf(" [required]");
+			printf(" %s[required]%s", th.crimson, th.reset);
 		printf("\n");
 	}
 }
@@ -80,8 +219,8 @@ static void print_flags(Flag *flags, const char *header)
 static void print_global_flags(void)
 {
 	printf("\nFLAGS\n");
-	printf("   -h, %s--help%s          Show help\n", th.teal, th.reset);
-	printf("   -V, %s--version%s       Print version\n", th.teal, th.reset);
+	printf("  %s-h, --help%s%*sShow help\n", th.teal, th.reset, 14, "");
+	printf("  %s-V, --version%s%*sPrint version\n", th.teal, th.reset, 11, "");
 }
 
 static void help_cli(CLI *cli)
@@ -94,13 +233,17 @@ static void help_cli(CLI *cli)
 	printf("COMMANDS\n");
 	for (i32 i = 0; i < DISPATCH_MAX_COMMANDS && cli->commands[i]; ++i) {
 		Command *cmd = cli->commands[i];
-		char	 label[64];
+		char label[64];
 		if (cmd->alias) {
 			snprintf(label, sizeof(label), "%s, %s", cmd->name, cmd->alias);
 		} else {
 			snprintf(label, sizeof(label), "%s", cmd->name);
 		}
-		printf("  %s%-16s%s %s\n", th.white, label, th.reset, cmd->usage ? cmd->usage : "");
+		usize len = strlen(label);
+		i32 pad = 24 - (i32)len;
+		if (pad < 2)
+			pad = 2;
+		printf("  %s%s%s%*s%s\n", th.white, label, th.reset, pad, "", cmd->usage ? cmd->usage : "");
 	}
 	print_global_flags();
 	printf("\n");
@@ -118,8 +261,14 @@ static void help_cmd(CLI *cli, Command *cmd)
 	if (cmd->subcommands[0]) {
 		printf("\nSUBCOMMANDS\n");
 		for (i32 i = 0; cmd->subcommands[i]; ++i) {
+			char label[64];
+			snprintf(label, sizeof(label), "%s", cmd->subcommands[i]->name);
+			usize len = strlen(label);
+			i32 pad = 24 - (i32)len;
+			if (pad < 2)
+				pad = 2;
 			printf(
-				"  %s%-16s%s %s\n", th.white, cmd->subcommands[i]->name, th.reset,
+				"  %s%s%s%*s%s\n", th.white, label, th.reset, pad, "",
 				cmd->subcommands[i]->usage ? cmd->subcommands[i]->usage : ""
 			);
 		}
@@ -136,7 +285,7 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 	for (i32 i = 0; i < DISPATCH_MAX_FLAGS && cmd->flags[i].name; ++i) {
 		cmd->flags[i]._set = false;
 	}
-	ctx->n_args		 = 0;
+	ctx->n_args = 0;
 	ctx->n_forwarded = 0;
 
 	for (i32 i = start; i < argc;) {
@@ -156,42 +305,32 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 		}
 
 		if (arg[0] == '-' && arg[1] == '-') {
-			const char *key = arg + 2;
-			const char *eq	= strchr(key, '=');
-			char		buf[128];
-			const char *inline_val = NULL;
+			StrView rest = sv_sub(sv_fromc(arg), 2, strlen(arg) - 2);
+			StrView key_sv, inline_val_sv;
+			bool	has_eq = sv_split(rest, '=', &key_sv, &inline_val_sv);
 
-			if (eq) {
-				usize len = (usize)(eq - key);
-				if (len >= sizeof(buf))
-					return Err("flag name too long");
-				memcpy(buf, key, len);
-				buf[len]   = '\0';
-				inline_val = eq + 1;
-			} else {
-				if (strlen(key) >= sizeof(buf))
-					return Err("flag name too long");
-				strncpy(buf, key, sizeof(buf) - 1);
-				buf[sizeof(buf) - 1] = '\0';
+			Flag *f = flag_find_sv(cmd->flags, key_sv);
+			if (!f) {
+				return Err("unknown flag '--%.*s'", (int)key_sv.len, key_sv.data);
 			}
-
-			Flag *f = flag_find(cmd->flags, buf);
-			if (!f)
-				return Err("unknown flag '--%s'", buf);
 			f->_set = true;
 
 			if (f->type == FLAG_BOOL) {
-				f->val.b = inline_val ?
-							   (strcmp(inline_val, "true") == 0 || strcmp(inline_val, "1") == 0) :
-							   true;
+				if (has_eq) {
+					f->val.b = (sv_eqc(inline_val_sv, "true") || sv_eqc(inline_val_sv, "1"));
+				} else {
+					f->val.b = true;
+				}
 				++i;
 				continue;
 			}
 
-			const char *val = inline_val;
-			if (!val) {
+			const char *val = NULL;
+			if (has_eq) {
+				val = inline_val_sv.data;
+			} else {
 				if (i + 1 >= argc || argv[i + 1][0] == '-') {
-					return Err("'--%s' requires a value", buf);
+					return Err("'--%.*s' requires a value", (int)key_sv.len, key_sv.data);
 				}
 				val = argv[++i];
 			}
@@ -203,8 +342,9 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 			case FLAG_INT: {
 				char *e;
 				f->val.i = (i32)strtol(val, &e, 10);
-				if (e == val || *e != '\0')
-					return Err("'--%s' expects integer", buf);
+				if (e == val || *e != '\0') {
+					return Err("'--%.*s' expects integer", (int)key_sv.len, key_sv.data);
+				}
 				break;
 			}
 			case FLAG_BOOL:
@@ -214,8 +354,8 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 		} else if (arg[0] == '-' && arg[1] && arg[1] != '-') {
 			i32 j = 1;
 			while (arg[j]) {
-				char  sc = arg[j];
-				Flag *f	 = flag_find_short(cmd->flags, sc);
+				char sc = arg[j];
+				Flag *f = flag_find_short(cmd->flags, sc);
 				if (!f)
 					return Err("unknown flag '-%c'", sc);
 				f->_set = true;
@@ -229,13 +369,13 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 				const char *val;
 				if (arg[j + 1]) {
 					val = arg + j + 1;
-					j	= (i32)strlen(arg);
+					j = (i32)strlen(arg);
 				} else {
 					if (i + 1 >= argc || argv[i + 1][0] == '-') {
 						return Err("'-%c' requires a value", sc);
 					}
 					val = argv[++i];
-					j	= (i32)strlen(arg);
+					j = (i32)strlen(arg);
 				}
 
 				switch (f->type) {
@@ -292,9 +432,9 @@ i32 dispatch(CLI *cli, i32 argc, char **argv)
 		return 0;
 	}
 
-	Command	 *cmd		= NULL;
+	Command *cmd = NULL;
 	Command **search_in = cli->commands;
-	i32		  arg_start = 1;
+	i32 arg_start = 1;
 
 	while (arg_start < argc) {
 		const char *tok = argv[arg_start];
@@ -303,13 +443,17 @@ i32 dispatch(CLI *cli, i32 argc, char **argv)
 		Command *found = find_cmd(search_in, tok);
 		if (!found)
 			break;
-		cmd		  = found;
+		cmd = found;
 		search_in = cmd->subcommands;
 		arg_start++;
 	}
 
 	if (!cmd) {
 		ui_error("unknown command '%s'", argv[1]);
+		Command *best = find_closest_cmd(cli->commands, argv[1]);
+		if (best) {
+			ui_info("Did you mean '%s'?", best->name);
+		}
 		ui_info("Run '%s --help' to see all available commands.", cli->name);
 		return 1;
 	}
@@ -318,13 +462,24 @@ i32 dispatch(CLI *cli, i32 argc, char **argv)
 		return 0;
 	}
 
-	Context ctx		  = { .cmd = cmd, .cli = cli };
+	Context ctx = { .cmd = cmd, .cli = cli };
 	bool	show_help = false;
-	Result	res		  = parse_flags(cmd, argc, argv, arg_start, &ctx, &show_help);
+	Result	res = parse_flags(cmd, argc, argv, arg_start, &ctx, &show_help);
+	defer(result_free, &res);
 	if (!res.ok) {
 		ui_error("%s", res.error);
+		StrView err_sv = sv_fromc(res.error);
+		if (sv_starts(err_sv, SV("unknown flag '--"))) {
+			StrView rest = sv_sub(err_sv, 16, err_sv.len - 16);
+			StrView flag_name;
+			if (sv_split(rest, '\'', &flag_name, NULL)) {
+				Flag *best_flag = find_closest_flag_sv(cmd->flags, flag_name);
+				if (best_flag) {
+					ui_info("Did you mean '--%s'?", best_flag->name);
+				}
+			}
+		}
 		ui_info("Run '%s %s --help' for flag usage.", cli->name, cmd->name);
-		result_free(&res);
 		return 1;
 	}
 
@@ -336,7 +491,6 @@ i32 dispatch(CLI *cli, i32 argc, char **argv)
 	res = cmd->action(&ctx);
 	if (!res.ok) {
 		ui_error("%s", res.error);
-		result_free(&res);
 		return 1;
 	}
 

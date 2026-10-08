@@ -90,7 +90,7 @@ static inline void tf_init_color(void)
 	g_color = isatty(fileno(stdout)) && !getenv("NO_COLOR");
 }
 
-static inline void tf_printf(const char *fmt, ...)
+PRINTF_FMT(1, 2) static inline void tf_printf(const char *fmt, ...)
 {
 	char	buf[4096];
 	va_list ap;
@@ -147,8 +147,7 @@ static inline void tf_format_time(f64 ms, char *buf, usize buf_size)
 
 static inline void record_test_result(
 	const char *name, f64 ms, bool passed, const char *err_msg, const char *err_file, i32 err_line
-)
-{
+) {
 	if (g_suite.count >= MAX_CASES) {
 		fprintf(
 			stderr, "suite '%s' exceeded %d cases\n", g_suite.name ? g_suite.name : "<unknown>",
@@ -159,7 +158,7 @@ static inline void record_test_result(
 	TestCaseResult *tc = &g_suite.cases[g_suite.count++];
 	snprintf(tc->name, sizeof(tc->name), "%s", name);
 	tc->duration_ms = ms;
-	tc->passed		= passed;
+	tc->passed = passed;
 	if (passed) {
 		g_suite.passed_count++;
 		g_test_ctx.passed++;
@@ -176,16 +175,16 @@ static inline void suite_end(void)
 {
 	if (g_suite.count == 0)
 		return;
-	f64	 suite_ms	= (f64)(tf_time_ns() - g_suite.start_ns) / 1000000.0;
+	f64 suite_ms = (f64)(tf_time_ns() - g_suite.start_ns) / 1000000.0;
 	bool all_passed = (g_suite.passed_count == g_suite.count);
 
 	const char *icon = all_passed ? (ANSI_BOLD ANSI_GREEN "✓" ANSI_RESET) :
 									(ANSI_BOLD ANSI_RED "✗" ANSI_RESET);
-	char		title[64];
+	char title[64];
 	snprintf(title, sizeof(title), "%s %d/%d", g_suite.name, g_suite.passed_count, g_suite.count);
 
 	i32 w_left = 2 + (i32)strlen(title);
-	i32 pad	   = TF_WIDTH - w_left;
+	i32 pad = TF_WIDTH - w_left;
 	if (pad < 1)
 		pad = 1;
 
@@ -198,12 +197,12 @@ static inline void suite_end(void)
 	tf_printf(ANSI_GRAY "%s" ANSI_RESET "\n", time_str);
 
 	for (i32 i = 0; i < g_suite.count; ++i) {
-		TestCaseResult *tc		= &g_suite.cases[i];
-		bool			is_last = (i == g_suite.count - 1);
-		const char	   *branch	= is_last ? "└─" : "├─";
+		TestCaseResult *tc = &g_suite.cases[i];
+		bool is_last = (i == g_suite.count - 1);
+		const char *branch = is_last ? "└─" : "├─";
 
 		char display_name[64];
-		i32	 max_name_len = TF_WIDTH - 6;
+		i32 max_name_len = TF_WIDTH - 6;
 		if ((i32)strlen(tc->name) > max_name_len) {
 			i32 keep_len = max_name_len - 3;
 			if (keep_len < 0)
@@ -213,7 +212,7 @@ static inline void suite_end(void)
 			snprintf(display_name, sizeof(display_name), "%s", tc->name);
 		}
 
-		i32 w_test	   = 6 + (i32)strlen(display_name);
+		i32 w_test = 6 + (i32)strlen(display_name);
 		i32 dots_count = TF_WIDTH - w_test;
 		if (dots_count < 0)
 			dots_count = 0;
@@ -250,9 +249,9 @@ static inline void tf_register(const char *suite, const char *name, TestFn fn)
 	if (!entry)
 		abort();
 	entry->suite = suite;
-	entry->name	 = name;
-	entry->fn	 = fn;
-	entry->next	 = NULL;
+	entry->name = name;
+	entry->fn = fn;
+	entry->next = NULL;
 
 	if (!g_test_registry) {
 		g_test_registry = entry;
@@ -271,6 +270,11 @@ static inline void tf_register(const char *suite, const char *name, TestFn fn)
 		tf_register(#suite, #name, t_##suite##_##name);                 \
 	}                                                                   \
 	static void t_##suite##_##name(void)
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+#endif
 
 #define TEST_FAIL_AT(file, line, fmt, ...)                                        \
 	do {                                                                          \
@@ -427,6 +431,10 @@ static inline void tf_free_str(char **p)
 		ASSERT_NULL(_out);                                       \
 	} while (0)
 
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
 static inline bool test_tmpdir_make(char *buf, usize cap)
 {
 	const char *tmp = getenv("TMPDIR");
@@ -466,16 +474,7 @@ static inline void tmpdir_drop(TmpDir *t)
 	test_tmpdir_make(n.path, sizeof(n.path))
 
 void loader_close(void);
-
-static inline void auto_loader_close(i32 *dummy)
-{
-	(void)dummy;
-	loader_close();
-}
-
-#define LOADER_AUTO                                               \
-	i32 _auto_ld __attribute__((cleanup(auto_loader_close))) = 0; \
-	(void)_auto_ld
+#define LOADER_AUTO defer(loader_close)
 
 #define TEST_SILENT(...)                          \
 	do {                                          \
@@ -518,8 +517,8 @@ static inline i32 test_summary(void)
 
 static inline void tf_run_suite_tests(const char *suite_name, const char *filter)
 {
-	bool	   suite_started = false;
-	TestEntry *entry		 = g_test_registry;
+	bool suite_started = false;
+	TestEntry *entry = g_test_registry;
 
 	while (entry) {
 		if (strcmp(entry->suite, suite_name) != 0) {
@@ -537,10 +536,10 @@ static inline void tf_run_suite_tests(const char *suite_name, const char *filter
 			suite_started = true;
 		}
 
-		g_cur_test_failed	= false;
+		g_cur_test_failed = false;
 		g_cur_test_error[0] = '\0';
-		g_cur_test_file[0]	= '\0';
-		g_cur_test_line		= 0;
+		g_cur_test_file[0] = '\0';
+		g_cur_test_line = 0;
 
 		u64 start_ns = tf_time_ns();
 		entry->fn();
@@ -561,8 +560,8 @@ static inline void tf_run_suite_tests(const char *suite_name, const char *filter
 static inline void tf_run_registered(const char *filter)
 {
 	static const char *ordered_suites[] = { "Preprocessor", "Loader", "Builder", NULL };
-	const char		  *ran_suites[64]	= { 0 };
-	i32				   num_ran			= 0;
+	const char *ran_suites[64] = { 0 };
+	i32 num_ran = 0;
 
 	for (i32 i = 0; ordered_suites[i]; ++i) {
 		tf_run_suite_tests(ordered_suites[i], filter);
@@ -589,3 +588,5 @@ static inline void tf_run_registered(const char *filter)
 		entry = entry->next;
 	}
 }
+
+void run_snapshot_tests(const char *filter);

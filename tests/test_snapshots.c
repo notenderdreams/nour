@@ -17,25 +17,23 @@ static char *read_file_to_string(const char *path)
 	FILE *f = fopen(path, "rb");
 	if (!f)
 		return NULL;
+	defer(fclose, f);
 
 	fseek(f, 0, SEEK_END);
 	i64 size = ftell(f);
 	fseek(f, 0, SEEK_SET);
 
 	if (size < 0) {
-		fclose(f);
 		return NULL;
 	}
 
 	char *buf = malloc(size + 1);
 	if (!buf) {
-		fclose(f);
 		return NULL;
 	}
 
 	usize read_bytes = fread(buf, 1, size, f);
-	buf[read_bytes]	 = '\0';
-	fclose(f);
+	buf[read_bytes] = '\0';
 	return buf;
 }
 
@@ -61,7 +59,7 @@ static void first_diff(const char *a, const char *b, char *out, usize cap)
 void run_snapshot_tests(const char *filter)
 {
 	const char *fixtures_dir = FIXTURES_DIR;
-	DIR		   *dir			 = opendir(fixtures_dir);
+	DIR *dir = opendir(fixtures_dir);
 	if (!dir) {
 		SUITE_BEGIN("Snapshots");
 		record_test_result(
@@ -70,9 +68,10 @@ void run_snapshot_tests(const char *filter)
 		SUITE_END();
 		return;
 	}
+	defer(closedir, dir);
 
 	char *names[MAX_CASES];
-	i32	  name_count = 0;
+	i32 name_count = 0;
 
 	struct dirent *entry;
 	while ((entry = readdir(dir)) != NULL) {
@@ -89,12 +88,11 @@ void run_snapshot_tests(const char *filter)
 			}
 		}
 	}
-	closedir(dir);
 
 	qsort(names, name_count, sizeof(char *), compare_strings);
 
 	const char *bless_env = getenv("NOUR_TEST_BLESS");
-	bool		bless_mode =
+	bool bless_mode =
 		(bless_env && (strcmp(bless_env, "1") == 0 || strcmp(bless_env, "true") == 0));
 
 	const char *tmp = getenv("TMPDIR");
@@ -121,8 +119,8 @@ void run_snapshot_tests(const char *filter)
 			getpid()
 		);
 
-		u64	 start_ns	  = tf_time_ns();
-		bool passed		  = true;
+		u64 start_ns = tf_time_ns();
+		bool passed = true;
 		char err_buf[256] = { 0 };
 
 		Result res = preprocess(input_path, actual_path);
@@ -134,8 +132,10 @@ void run_snapshot_tests(const char *filter)
 			);
 			result_free(&res);
 		} else {
-			char *actual_content   = read_file_to_string(actual_path);
+			char *actual_content = read_file_to_string(actual_path);
+			defer(free, actual_content);
 			char *expected_content = read_file_to_string(expected_path);
+			defer(free, expected_content);
 
 			if (!actual_content) {
 				passed = false;
@@ -144,8 +144,8 @@ void run_snapshot_tests(const char *filter)
 				if (!expected_content || strcmp(actual_content, expected_content) != 0) {
 					FILE *exp = fopen(expected_path, "wb");
 					if (exp) {
+						defer(fclose, exp);
 						fputs(actual_content, exp);
-						fclose(exp);
 					}
 				}
 			} else {
@@ -158,8 +158,6 @@ void run_snapshot_tests(const char *filter)
 				}
 			}
 
-			free(actual_content);
-			free(expected_content);
 			remove(actual_path);
 		}
 

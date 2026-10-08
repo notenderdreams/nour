@@ -62,12 +62,35 @@ void ui_info(const char *fmt, ...)
 	va_end(args);
 }
 
+void ui_next_steps(const char *dir, const char *cmd_hint)
+{
+	printf("\n  %sNext steps:%s\n", th.bold, th.reset);
+	if (dir && dir[0]) {
+		printf("    cd %s%s%s\n", th.teal, dir, th.reset);
+	}
+	if (cmd_hint && cmd_hint[0]) {
+		printf("    %s%s%s\n", th.teal, cmd_hint, th.reset);
+	}
+	printf("\n");
+}
+
+void ui_format_duration(char *buf, usize cap, f64 duration_ms)
+{
+	if (duration_ms >= 1000.0) {
+		snprintf(buf, cap, "%.2f s", duration_ms / 1000.0);
+	} else if (duration_ms >= 10.0) {
+		snprintf(buf, cap, "%.1f ms", duration_ms);
+	} else {
+		snprintf(buf, cap, "%.2f ms", duration_ms);
+	}
+}
+
 void ui_tree_step(bool is_last, const char *label, f64 duration_ms)
 {
 	const char *branch = is_last ? th.corner : th.branch;
 
 	char display_label[64];
-	i32	 max_len = 38;
+	i32 max_len = 38;
 	if ((i32)strlen(label) > max_len) {
 		snprintf(display_label, sizeof(display_label), "%.*s...", max_len - 3, label);
 	} else {

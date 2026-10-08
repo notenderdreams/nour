@@ -15,21 +15,23 @@ TEST(Loader, end_to_end_project)
 
 	const char *manifest_src =
 		"Executable my_cli = {\n"
-		"    .root     = \"src/main.c\",\n"
-		"    .sources  = { \"src/main.c\", \"src/utils.c\" },\n"
+		"    .root = \"src/main.c\",\n"
+		"    .sources = { \"src/main.c\", \"src/utils.c\" },\n"
 		"    .includes = { \"include\" },\n"
-		"    .cflags   = { \"-O3\", \"-DCLI_VERSION=1\" },\n"
+		"    .cflags = { \"-O3\", \"-DCLI_VERSION=1\" },\n"
 		"};\n"
 		"Project CliProject = {\n"
-		"    .version   = \"2.5.0\",\n"
+		"    .version = \"2.5.0\",\n"
 		"    .build_dir = \"out\",\n"
-		"    .targets   = { &my_cli },\n"
+		"    .targets = { &my_cli },\n"
 		"};\n";
 
-	FILE *f = fopen(nour_path, "w");
-	ASSERT_NOT_NULL(f);
-	fputs(manifest_src, f);
-	fclose(f);
+	{
+		FILE *f = fopen(nour_path, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs(manifest_src, f);
+	}
 
 	// 1. Preprocess
 	Result res = preprocess(nour_path, c_path);
@@ -91,10 +93,12 @@ TEST(Loader, fails_on_invalid_c_compilation)
 	snprintf(bad_c, sizeof(bad_c), "%s/bad.c", td.path);
 	snprintf(out_so, sizeof(out_so), "%s/bad.so", td.path);
 
-	FILE *f = fopen(bad_c, "w");
-	ASSERT_NOT_NULL(f);
-	fprintf(f, "int this is total gibberish syntax error;\n");
-	fclose(f);
+	{
+		FILE *f = fopen(bad_c, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fprintf(f, "int this is total gibberish syntax error;\n");
+	}
 
 	Result res;
 	TEST_SILENT(res = compile_nour(bad_c, out_so));
@@ -104,8 +108,8 @@ TEST(Loader, fails_on_invalid_c_compilation)
 static Result helper_unwrap_ok(void)
 {
 	static i32 val = 99;
-	Result	   r   = Ok(&val);
-	i32		  *p   = Unwrap(r);
+	Result r = Ok(&val);
+	i32 *p = Unwrap(r);
 	if (*p != 99)
 		return Err("mismatch");
 	return Ok(p);
@@ -114,7 +118,7 @@ static Result helper_unwrap_ok(void)
 static Result helper_unwrap_err(void)
 {
 	Result r = Err("simulated failure");
-	i32	  *p = Unwrap(r);
+	i32 *p = Unwrap(r);
 	(void)p;
 	return Ok(NULL);
 }

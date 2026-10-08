@@ -24,7 +24,7 @@ test_flags := "-fsanitize=address,undefined -DFIXTURES_DIR='\"tests/fixtures\"'"
 
 test: build
 	mkdir -p bin
-	{{cc}} {{cflags}} {{test_flags}} -Inour-core -Itests -D_DARWIN_C_SOURCE=1 nour-core/parser.c nour-core/loader.c nour-core/utils.c nour-core/builder.c nour-core/fs.c tests/*.c -o bin/nour_test {{ldflags}}
+	{{cc}} {{cflags}} {{test_flags}} -Inour-core -Itests -D_DARWIN_C_SOURCE=1 nour-core/arena.c nour-core/str.c nour-core/parser.c nour-core/loader.c nour-core/utils.c nour-core/builder.c nour-core/fs.c tests/*.c -o bin/nour_test {{ldflags}}
 	./bin/nour_test
 
 test-cli: build
@@ -34,7 +34,7 @@ test-all: test test-cli
 
 test-bless: build
 	mkdir -p bin
-	{{cc}} {{cflags}} {{test_flags}} -Inour-core -Itests -D_DARWIN_C_SOURCE=1 nour-core/parser.c nour-core/loader.c nour-core/utils.c nour-core/builder.c nour-core/fs.c tests/*.c -o bin/nour_test {{ldflags}}
+	{{cc}} {{cflags}} {{test_flags}} -Inour-core -Itests -D_DARWIN_C_SOURCE=1 nour-core/arena.c nour-core/str.c nour-core/parser.c nour-core/loader.c nour-core/utils.c nour-core/builder.c nour-core/fs.c tests/*.c -o bin/nour_test {{ldflags}}
 	NOUR_TEST_BLESS=1 ./bin/nour_test
 
 clean:
@@ -42,4 +42,6 @@ clean:
 
 fmt:
 	find . -type f \( -name "*.c" -o -name "*.h" \) ! -name "nour_header.h" ! -path "*/fixtures/*" ! -path "*/build/*" ! -path "*/.git/*" -exec clang-format -i {} +
+	find . -type f \( -name "*.c" -o -name "*.h" \) ! -name "nour_header.h" ! -path "*/fixtures/*" ! -path "*/build/*" ! -path "*/.git/*" -exec perl -0777 -pi -e 's/(\n[ \t]*\))\n[ \t]*\{/$1 {/g' {} +
+	python3 scripts/unalign_locals.py
 
