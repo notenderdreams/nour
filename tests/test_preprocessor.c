@@ -143,3 +143,21 @@ TEST(Preprocessor, error_unclosed_array)
 		"};\n"
 	);
 }
+
+TEST(Preprocessor, module_and_mods)
+{
+	ASSERT_PREPROCESS(
+		"Module core = {\n"
+		"    .sources = { \"core/a.c\" },\n"
+		"    .includes = { \"core\" },\n"
+		"};\n"
+		"Executable app = {\n"
+		"    .sources = { \"src/main.c\" },\n"
+		"    .mods = { &core },\n"
+		"};\n"
+		"Project P = {\n"
+		"    .targets = { &app },\n"
+		"};\n",
+		".name = \"core\",", ".mods = (Module*[]){ &core , NULL }"
+	);
+}

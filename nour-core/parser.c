@@ -20,6 +20,8 @@ static bool check_declaration(const char *line, FILE *out, char *project_name)
 	} else if (sv_starts(sv, SV("Library "))) {
 		type_sv = SV("Library");
 		kind_str = "    .kind = T_LIBRARY,\n";
+	} else if (sv_starts(sv, SV("Module "))) {
+		type_sv = SV("Module");
 	} else if (sv_starts(sv, SV("Project "))) {
 		type_sv = SV("Project");
 	} else {
@@ -54,6 +56,8 @@ static const char *get_array_cast(StrView line_sv)
 {
 	if (sv_contains(line_sv, SV(".targets")) || sv_contains(line_sv, SV(".deps")))
 		return "(void*[])";
+	if (sv_contains(line_sv, SV(".mods")))
+		return "(Module*[])";
 	return "(const char*[])";
 }
 

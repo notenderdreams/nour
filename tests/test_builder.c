@@ -274,3 +274,64 @@ TEST(Builder, generated_config_header_and_profiles)
 	snprintf(run_cmd, sizeof(run_cmd), "\"%s\"", bin_path);
 	ASSERT_EQ(system(run_cmd), 0);
 }
+
+TEST(Builder, build_executable_with_modules)
+{
+	TMPDIR_AUTO(td);
+
+	write_test_file(td.path, "nested/deep.h", "int deep_val(void);\n");
+	write_test_file(
+		td.path, "nested/deep.c", "#include \"deep.h\"\nint deep_val(void) { return 40; }\n"
+	);
+
+	write_test_file(td.path, "sub/calc.h", "int add(int a, int b);\n");
+	write_test_file(
+		td.path, "sub/calc.c", "#include \"calc.h\"\nint add(int a, int b) { return a + b; }\n"
+	);
+
+	write_test_file(
+		td.path, "src/main.c",
+		"#include \"calc.h\"\n"
+		"#include \"deep.h\"\n"
+		"int main(void) {\n"
+		"    return (add(1, 1) + deep_val() == 42) ? 0 : 1;\n"
+		"}\n"
+	);
+
+	Module deep_mod = {
+		.name	  = "deep_mod",
+		.sources  = (const char *[]){ "nested/*.c", NULL },
+		.includes = (const char *[]){ "nested", NULL },
+	};
+
+	Module calc_mod = {
+		.name	  = "calc_mod",
+		.sources  = (const char *[]){ "sub/*.c", NULL },
+		.includes = (const char *[]){ "sub", NULL },
+		.mods	  = (Module *[]){ &deep_mod, NULL },
+	};
+
+	Executable exe = {
+		.kind = T_EXECUTABLE,
+		.name = "mod_app",
+		.root = "src/main.c",
+		.mods = (Module *[]){ &calc_mod, NULL },
+	};
+
+	Project proj = {
+		.name	   = "ModProject",
+		.build_dir = "bin",
+		.targets   = (void *[]){ &exe, NULL },
+	};
+
+	Result res = build_project(&proj, td.path);
+	ASSERT_RESULT_OK(res);
+
+	char bin_path[512];
+	snprintf(bin_path, sizeof(bin_path), "%s/bin/mod_app", td.path);
+	ASSERT_TRUE(access(bin_path, F_OK) == 0);
+
+	char run_cmd[600];
+	snprintf(run_cmd, sizeof(run_cmd), "\"%s\"", bin_path);
+	ASSERT_EQ(system(run_cmd), 0);
+}

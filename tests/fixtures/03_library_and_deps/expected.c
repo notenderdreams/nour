@@ -7,6 +7,7 @@ typedef struct Target	  Target;
 typedef struct Executable Executable;
 typedef struct Library	  Library;
 typedef struct Project	  Project;
+typedef struct Module	  Module;
 
 typedef enum {
 	T_EXECUTABLE,
@@ -16,12 +17,18 @@ typedef enum {
 typedef enum {
 	STATIC,
 	SHARED,
-	INTERFACE,
 } LibraryType;
 
 struct Target {
 	TargetKind	kind;
 	const char *name;
+};
+
+struct Module {
+	const char	*name;
+	const char **sources;
+	const char **includes;
+	Module	   **mods;
 };
 
 struct Executable {
@@ -31,6 +38,7 @@ struct Executable {
 	const char **sources;
 	const char **includes;
 	const char **defines;
+	Module	   **mods;
 	const char **cflags;
 	const char **ldflags;
 	void	   **deps;
@@ -42,6 +50,7 @@ struct Library {
 	LibraryType	 type;
 	const char **sources;
 	const char **includes;
+	Module	   **mods;
 	const char **public_includes;
 	const char **defines;
 	const char **public_defines;

@@ -91,6 +91,67 @@ static const char *resolve_executable_root(const Executable *exe, const char *pr
 	return NULL;
 }
 
+static void
+collect_module_includes(Arena *a, const Module *mod, const char *project_dir, usize depth)
+{
+	if (!mod || depth > 16)
+		return;
+
+	if (mod->includes) {
+		for (const char **inc = mod->includes; *inc; ++inc) {
+			rnstr_printf(a, " -I\"%s/%s\"", project_dir, *inc);
+		}
+	}
+
+	if (mod->mods) {
+		for (usize i = 0; mod->mods[i]; ++i) {
+			collect_module_includes(a, mod->mods[i], project_dir, depth + 1);
+		}
+	}
+}
+
+static Result collect_module_sources(
+	Arena *a, const Module *mod, const char *project_dir, const char *full_root_path,
+	bool *root_appended, usize *total_sources, usize depth
+) {
+	if (!mod || depth > 16)
+		return Ok(NULL);
+
+	if (mod->sources) {
+		for (const char **src = mod->sources; *src; ++src) {
+			char pattern[PATH_MAX];
+			snprintf(pattern, sizeof(pattern), "%s/%s", project_dir, *src);
+
+			glob_t g;
+			i32 ret = glob(pattern, 0, NULL, &g);
+			if (ret) {
+				const char *mod_name = mod->name ? mod->name : "anonymous";
+				return Err("Module '%s': no files found matching '%s'", mod_name, *src);
+			}
+			defer(globfree, &g);
+
+			for (usize k = 0; k < (usize)g.gl_pathc; ++k) {
+				if (full_root_path && strcmp(g.gl_pathv[k], full_root_path) == 0) {
+					*root_appended = true;
+				}
+				rnstr_printf(a, " \"%s\"", g.gl_pathv[k]);
+				(*total_sources)++;
+			}
+		}
+	}
+
+	if (mod->mods) {
+		for (usize i = 0; mod->mods[i]; ++i) {
+			Try(collect_module_sources(
+				a, mod->mods[i], project_dir, full_root_path, root_appended, total_sources,
+				depth + 1
+			));
+		}
+	}
+
+	return Ok(NULL);
+}
+
 static Result build_executable(
 	const Executable *exe, const Project *proj, const char *project_dir, const char *profile
 ) {
@@ -131,6 +192,13 @@ static Result build_executable(
 		}
 	}
 
+	// Module includes
+	if (exe->mods) {
+		for (usize i = 0; exe->mods[i]; ++i) {
+			collect_module_includes(&a, exe->mods[i], project_dir, 0);
+		}
+	}
+
 	// Defines
 	if (exe->defines) {
 		for (const char **d = exe->defines; *d; ++d) {
@@ -139,7 +207,7 @@ static Result build_executable(
 	}
 
 	// Source files
-	if ((!exe->sources || !exe->sources[0]) && !root) {
+	if ((!exe->sources || !exe->sources[0]) && !root && (!exe->mods || !exe->mods[0])) {
 		return Err("Target '%s' has no sources specified", exe->name);
 	}
 
@@ -163,6 +231,15 @@ static Result build_executable(
 				rnstr_printf(&a, " \"%s\"", g.gl_pathv[k]);
 				++total_sources;
 			}
+		}
+	}
+
+	// Module sources
+	if (exe->mods) {
+		for (usize i = 0; exe->mods[i]; ++i) {
+			Try(collect_module_sources(
+				&a, exe->mods[i], project_dir, full_root_path, &root_appended, &total_sources, 0
+			));
 		}
 	}
 
