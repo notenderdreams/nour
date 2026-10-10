@@ -2,6 +2,7 @@
 #include "loader.h"
 #include "nour.h"
 #include "parser.h"
+#include <sys/stat.h>
 
 TEST(Loader, end_to_end_project)
 {
@@ -130,4 +131,120 @@ TEST(Loader, unwrap_macro)
 	ASSERT_EQ(*(i32 *)r1.value, 99);
 
 	ASSERT_RESULT_ERR_CONTAINS(helper_unwrap_err(), "simulated failure");
+}
+
+TEST(Loader, end_to_end_project_with_nested_modules)
+{
+	TMPDIR_AUTO(td);
+	LOADER_AUTO;
+
+	char dir_core[512], dir_sub[512];
+	snprintf(dir_core, sizeof(dir_core), "%s/core", td.path);
+	snprintf(dir_sub, sizeof(dir_sub), "%s/core/sub", td.path);
+	mkdir(dir_core, 0755);
+	mkdir(dir_sub, 0755);
+
+	// core/sub/mod.nour
+	char sub_mod_path[512];
+	snprintf(sub_mod_path, sizeof(sub_mod_path), "%s/core/sub/mod.nour", td.path);
+	{
+		FILE *f = fopen(sub_mod_path, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs(
+			"Module sub = {\n"
+			"    .sources = { \"*.c\" },\n"
+			"    .includes = { \".\" },\n"
+			"};\n",
+			f
+		);
+	}
+
+	// core/mod.nour
+	char core_mod_path[512];
+	snprintf(core_mod_path, sizeof(core_mod_path), "%s/core/mod.nour", td.path);
+	{
+		FILE *f = fopen(core_mod_path, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs(
+			"#include \"sub/mod.nour\"\n"
+			"Module core = {\n"
+			"    .sources = { \"*.c\" },\n"
+			"    .includes = { \".\" },\n"
+			"    .mods = { &sub },\n"
+			"};\n",
+			f
+		);
+	}
+
+	// project.nour
+	char nour_path[512], c_path[512], so_path[512];
+	snprintf(nour_path, sizeof(nour_path), "%s/project.nour", td.path);
+	snprintf(c_path, sizeof(c_path), "%s/project.nour.c", td.path);
+	snprintf(so_path, sizeof(so_path), "%s/libnour.so", td.path);
+	{
+		FILE *f = fopen(nour_path, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs(
+			"#include \"core/mod.nour\"\n"
+			"Executable app = {\n"
+			"    .root = \"src/main.c\",\n"
+			"    .mods = { &core },\n"
+			"};\n"
+			"Project NestedProj = {\n"
+			"    .version = \"1.0.0\",\n"
+			"    .targets = { &app },\n"
+			"};\n",
+			f
+		);
+	}
+
+	// 1. Preprocess
+	Result res = preprocess(nour_path, c_path);
+	ASSERT_RESULT_OK(res);
+
+	// 2. Compile to .so
+	res = compile_nour(c_path, so_path);
+	ASSERT_RESULT_OK(res);
+
+	// 3. Load project
+	res = load_project(so_path);
+	ASSERT_RESULT_OK(res);
+	ASSERT_NOT_NULL(res.value);
+
+	Project *proj = (Project *)res.value;
+	ASSERT_STR_EQ(proj->name, "NestedProj");
+	ASSERT_STR_EQ(proj->version, "1.0.0");
+	ASSERT_NOT_NULL(proj->targets);
+
+	Target *t0 = (Target *)proj->targets[0];
+	ASSERT_NOT_NULL(t0);
+	ASSERT_EQ(t0->kind, T_EXECUTABLE);
+	ASSERT_STR_EQ(t0->name, "app");
+
+	Executable *exe = (Executable *)t0;
+	ASSERT_NOT_NULL(exe->mods);
+
+	// Top module: core
+	Module *mod_core = exe->mods[0];
+	ASSERT_NOT_NULL(mod_core);
+	ASSERT_STR_EQ(mod_core->name, "core");
+	ASSERT_NOT_NULL(mod_core->sources);
+	ASSERT_STR_EQ(mod_core->sources[0], "core/*.c");
+	ASSERT_NOT_NULL(mod_core->includes);
+	ASSERT_STR_EQ(mod_core->includes[0], "core");
+	ASSERT_NULL(exe->mods[1]);
+
+	// Nested module: sub
+	ASSERT_NOT_NULL(mod_core->mods);
+	Module *mod_sub = mod_core->mods[0];
+	ASSERT_NOT_NULL(mod_sub);
+	ASSERT_STR_EQ(mod_sub->name, "sub");
+	ASSERT_NOT_NULL(mod_sub->sources);
+	ASSERT_STR_EQ(mod_sub->sources[0], "core/sub/*.c");
+	ASSERT_NOT_NULL(mod_sub->includes);
+	ASSERT_STR_EQ(mod_sub->includes[0], "core/sub");
+	ASSERT_NULL(mod_core->mods[1]);
 }

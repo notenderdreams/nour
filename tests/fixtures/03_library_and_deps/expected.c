@@ -67,7 +67,7 @@ struct Project {
 	void	  **targets;
 };
 
-// ─────────────────── Project Manifest ───────────────────
+// ─────────────────── input.nour ───────────────────
 Library core = {
     .kind = T_LIBRARY,
     .name = "core",

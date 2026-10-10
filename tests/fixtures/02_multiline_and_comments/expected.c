@@ -67,7 +67,7 @@ struct Project {
 	void	  **targets;
 };
 
-// ─────────────────── Project Manifest ───────────────────
+// ─────────────────── input.nour ───────────────────
 // Main configuration
 Executable server = {
     .kind = T_EXECUTABLE,

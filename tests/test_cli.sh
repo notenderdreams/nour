@@ -103,6 +103,52 @@ test_assert "init current directory" 0 "cd '${INIT_DIR}' && '${NOUR_BIN}' init i
 test_assert "init files exist" 0 "test -f '${INIT_DIR}/project.nour' && test -f '${INIT_DIR}/src/main.c' && test -f '${INIT_DIR}/.gitignore'"
 test_assert "init duplicate rejection" 1 "cd '${INIT_DIR}' && '${NOUR_BIN}' init" "" "already exists in current directory"
 
+# 7. Nested mod.nour Multi-file Support
+NESTED_DIR="${TEMP_DIR}/nested_test"
+mkdir -p "${NESTED_DIR}/core/sub" "${NESTED_DIR}/src"
+cat << 'EOF' > "${NESTED_DIR}/core/sub/mod.nour"
+Module sub = {
+    .sources = { "*.c" },
+    .includes = { "." },
+};
+EOF
+cat << 'EOF' > "${NESTED_DIR}/core/sub/sub.c"
+int sub_fn(void) { return 42; }
+EOF
+cat << 'EOF' > "${NESTED_DIR}/core/mod.nour"
+#include "sub/mod.nour"
+Module core = {
+    .sources = { "*.c" },
+    .includes = { "." },
+    .mods = { &sub },
+};
+EOF
+cat << 'EOF' > "${NESTED_DIR}/core/core.c"
+int sub_fn(void);
+int core_fn(void) { return sub_fn() * 2; }
+EOF
+cat << 'EOF' > "${NESTED_DIR}/project.nour"
+#include "core/mod.nour"
+Executable nested_app = {
+    .root = "src/main.c",
+    .mods = { &core },
+};
+Project NestedCLI = {
+    .version = "1.0.0",
+    .targets = { &nested_app },
+};
+EOF
+cat << 'EOF' > "${NESTED_DIR}/src/main.c"
+#include <stdio.h>
+int core_fn(void);
+int main(void) {
+    printf("NESTED_RESULT: %d\n", core_fn());
+    return 0;
+}
+EOF
+
+test_assert "run nested mod.nour project" 0 "'${NOUR_BIN}' run '${NESTED_DIR}'" "NESTED_RESULT: 84"
+
 # Summary
 echo -e "\n──────────────────────────────────────────────────────"
 if [[ ${FAILED} -eq 0 ]]; then

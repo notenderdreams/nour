@@ -1,17 +1,10 @@
-Module core = {
-	.sources  = { "nour-core/*.c" },
-	.includes = { "nour-core", "include" },
-};
-
-Module cli = {
-	.sources  = { "nour-cli/*.c" },
-	.includes = { "nour-cli" },
-};
+#include "nour-core/mod.nour"
+#include "nour-cli/mod.nour"
 
 Executable nour = {
 	.root     = "nour-cli/main.c",
 	.mods     = { &core, &cli },
-	.includes = { ".", "include" },
+	.includes = { "include" },
 	.defines  = { "_POSIX_C_SOURCE=200809L" },
 	.cflags   = {
 		"-O2",

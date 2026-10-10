@@ -446,3 +446,138 @@ TEST(CLI, flag_hints_in_help)
 	ASSERT_STR_CONTAINS(out.stdout_str, "-p, --profile <name>");
 	ASSERT_STR_CONTAINS(out.stdout_str, "-r, --release");
 }
+
+TEST(CLI, build_and_run_nested_modules)
+{
+	TMPDIR_AUTO(td);
+	CliOutput out;
+
+	ASSERT_TRUE(run_cli(td.path, "new nested_cli_app", &out));
+	ASSERT_EQ(out.exit_code, 0);
+
+	char prj_dir[512], math_dir[512], adv_dir[512];
+	snprintf(prj_dir, sizeof(prj_dir), "%s/nested_cli_app", td.path);
+	snprintf(math_dir, sizeof(math_dir), "%s/nested_cli_app/math", td.path);
+	snprintf(adv_dir, sizeof(adv_dir), "%s/nested_cli_app/math/advanced", td.path);
+	mkdir(math_dir, 0755);
+	mkdir(adv_dir, 0755);
+
+	// math/advanced/mod.nour
+	char adv_mod[512];
+	snprintf(adv_mod, sizeof(adv_mod), "%s/mod.nour", adv_dir);
+	{
+		FILE *f = fopen(adv_mod, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs(
+			"Module advanced = {\n"
+			"    .sources = { \"*.c\" },\n"
+			"    .includes = { \".\" },\n"
+			"};\n",
+			f
+		);
+	}
+
+	// math/advanced/adv.h
+	char adv_h[512];
+	snprintf(adv_h, sizeof(adv_h), "%s/adv.h", adv_dir);
+	{
+		FILE *f = fopen(adv_h, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs("int cube(int x);\n", f);
+	}
+
+	// math/advanced/adv.c
+	char adv_c[512];
+	snprintf(adv_c, sizeof(adv_c), "%s/adv.c", adv_dir);
+	{
+		FILE *f = fopen(adv_c, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs("#include \"adv.h\"\nint cube(int x) { return x * x * x; }\n", f);
+	}
+
+	// math/mod.nour
+	char math_mod[512];
+	snprintf(math_mod, sizeof(math_mod), "%s/mod.nour", math_dir);
+	{
+		FILE *f = fopen(math_mod, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs(
+			"#include \"advanced/mod.nour\"\n"
+			"Module math = {\n"
+			"    .sources = { \"*.c\" },\n"
+			"    .includes = { \".\" },\n"
+			"    .mods = { &advanced },\n"
+			"};\n",
+			f
+		);
+	}
+
+	// math/math.h
+	char math_h[512];
+	snprintf(math_h, sizeof(math_h), "%s/math.h", math_dir);
+	{
+		FILE *f = fopen(math_h, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs("int double_val(int x);\n", f);
+	}
+
+	// math/math.c
+	char math_c[512];
+	snprintf(math_c, sizeof(math_c), "%s/math.c", math_dir);
+	{
+		FILE *f = fopen(math_c, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs("#include \"math.h\"\nint double_val(int x) { return x * 2; }\n", f);
+	}
+
+	// Overwrite project.nour
+	char prj_nour[512];
+	snprintf(prj_nour, sizeof(prj_nour), "%s/project.nour", prj_dir);
+	{
+		FILE *f = fopen(prj_nour, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs(
+			"#include \"math/mod.nour\"\n"
+			"Executable nested_cli_app = {\n"
+			"    .root = \"src/main.c\",\n"
+			"    .mods = { &math },\n"
+			"};\n"
+			"Project NestedCliProj = {\n"
+			"    .version = \"0.1.0\",\n"
+			"    .targets = { &nested_cli_app },\n"
+			"};\n",
+			f
+		);
+	}
+
+	// Overwrite src/main.c
+	char main_c[512];
+	snprintf(main_c, sizeof(main_c), "%s/src/main.c", prj_dir);
+	{
+		FILE *f = fopen(main_c, "w");
+		ASSERT_NOT_NULL(f);
+		defer(fclose, f);
+		fputs(
+			"#include <stdio.h>\n"
+			"#include \"math.h\"\n"
+			"#include \"adv.h\"\n"
+			"int main(void) {\n"
+			"    printf(\"RESULT: %d\\n\", double_val(5) + cube(3));\n"
+			"    return 0;\n"
+			"}\n",
+			f
+		);
+	}
+
+	// Run through CLI
+	ASSERT_TRUE(run_cli(td.path, "run nested_cli_app", &out));
+	ASSERT_EQ(out.exit_code, 0);
+	ASSERT_STR_CONTAINS(out.stdout_str, "RESULT: 37");
+}

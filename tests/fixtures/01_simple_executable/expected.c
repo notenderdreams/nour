@@ -67,7 +67,7 @@ struct Project {
 	void	  **targets;
 };
 
-// ─────────────────── Project Manifest ───────────────────
+// ─────────────────── input.nour ───────────────────
 Executable app = {
     .kind = T_EXECUTABLE,
     .name = "app",

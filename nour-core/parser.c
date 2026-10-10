@@ -5,7 +5,9 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static bool check_declaration(const char *line, FILE *out, char *project_name)
@@ -92,7 +94,6 @@ static void attach_header(FILE *out)
 		size_t body_len = len - (size_t)(body - header);
 		fwrite(body, 1, body_len, out);
 	}
-	fputs(section_banner("Project Manifest"), out);
 }
 
 static void attach_entrypoint(FILE *out, const char *project_name)
@@ -103,30 +104,195 @@ static void attach_entrypoint(FILE *out, const char *project_name)
 	}
 }
 
-#include <stdlib.h>
-
-Result preprocess_stream(FILE *in, FILE *out, const char *source_name)
+static const char *get_display_name(const char *path)
 {
-	const char *src_name = source_name ? source_name : "<stream>";
-	attach_header(out);
+	if (!path || path[0] == '<')
+		return path ? path : "project.nour";
+	const char *last = strrchr(path, '/');
+	if (last)
+		return last + 1;
+	return path;
+}
+
+static void emit_banner_if_needed(FILE *out, const char *display_name, char *current_banner)
+{
+	if (!display_name || !display_name[0])
+		return;
+	if (strcmp(current_banner, display_name) != 0) {
+		fputs(section_banner(display_name), out);
+		snprintf(current_banner, 256, "%s", display_name);
+	}
+}
+
+static void rewrite_path_item(const char *item, usize len, const char *dir, char *out, usize cap)
+{
+	if (!dir || !dir[0]) {
+		snprintf(out, cap, "%.*s", (int)len, item);
+		return;
+	}
+	if (len >= 2 && item[0] == '.' && item[1] == '/') {
+		item += 2;
+		len -= 2;
+	}
+	if (len == 0 || (len == 1 && item[0] == '.')) {
+		snprintf(out, cap, "%s", dir);
+	} else if (len > 0 && item[0] == '/') {
+		snprintf(out, cap, "%.*s", (int)len, item);
+	} else {
+		snprintf(out, cap, "%s/%.*s", dir, (int)len, item);
+	}
+}
+
+static void rewrite_paths_in_line(const char *line, const char *dir, char *out, usize cap)
+{
+	if (!dir || !dir[0] || cap == 0) {
+		snprintf(out, cap, "%s", line);
+		return;
+	}
+	usize out_len = 0;
+	const char *p = line;
+	while (*p && out_len + 1 < cap) {
+		if (*p == '\"') {
+			const char *start = p + 1;
+			const char *end = strchr(start, '\"');
+			if (end) {
+				char rewritten[512];
+				rewrite_path_item(start, (usize)(end - start), dir, rewritten, sizeof(rewritten));
+				usize rlen = strlen(rewritten);
+				if (out_len + rlen + 3 <= cap) {
+					out[out_len++] = '\"';
+					memcpy(out + out_len, rewritten, rlen);
+					out_len += rlen;
+					out[out_len++] = '\"';
+					p = end + 1;
+					continue;
+				}
+			}
+		}
+		out[out_len++] = *p++;
+	}
+	out[out_len] = '\0';
+}
+
+static Result preprocess_lines(
+	FILE *in, FILE *out, const char *source_name, const char *display_name, const char *rel_dir,
+	char *project_name, char *current_banner, usize depth
+) {
+	if (depth > 16) {
+		return Err("Include depth limit exceeded (max 16) while processing '%s'", source_name);
+	}
 
 	char line[1024];
-	char project_name[64] = { 0 };
 	bool in_array = false;
+	bool in_path_array = false;
 	char last_ch = 0;
 
 	while (fgets(line, sizeof(line), in)) {
 		StrView line_sv = sv_fromc(line);
 		StrView trimmed = sv_trim(line_sv);
 		if (sv_starts(trimmed, SV("//"))) {
+			emit_banner_if_needed(out, display_name, current_banner);
 			fputs(line, out);
 			continue;
+		}
+
+		if (!in_array && sv_starts(trimmed, SV("#include"))) {
+			StrView rest = sv_trim(sv_sub(trimmed, 8, trimmed.len - 8));
+			if (sv_starts(rest, SV("\""))) {
+				usize quote_end = 0;
+				for (usize i = 1; i < rest.len; ++i) {
+					if (rest.data[i] == '\"') {
+						quote_end = i;
+						break;
+					}
+				}
+				if (quote_end > 1) {
+					StrView inc_path_sv = sv_sub(rest, 1, quote_end - 1);
+					if (sv_ends(inc_path_sv, SV(".nour"))) {
+						if (sv_starts(inc_path_sv, SV("./"))) {
+							inc_path_sv = sv_sub(inc_path_sv, 2, inc_path_sv.len - 2);
+						}
+
+						char inc_file_path[PATH_MAX];
+						if (inc_path_sv.len > 0 && inc_path_sv.data[0] == '/') {
+							snprintf(
+								inc_file_path, sizeof(inc_file_path), "%.*s", (int)inc_path_sv.len,
+								inc_path_sv.data
+							);
+						} else {
+							const char *last_slash = source_name ? strrchr(source_name, '/') : NULL;
+							if (last_slash && source_name[0] != '<') {
+								usize dir_len = (usize)(last_slash - source_name);
+								snprintf(
+									inc_file_path, sizeof(inc_file_path), "%.*s/%.*s", (int)dir_len,
+									source_name, (int)inc_path_sv.len, inc_path_sv.data
+								);
+							} else {
+								snprintf(
+									inc_file_path, sizeof(inc_file_path), "%.*s",
+									(int)inc_path_sv.len, inc_path_sv.data
+								);
+							}
+						}
+
+						FILE *inc_file = fopen(inc_file_path, "r");
+						if (!inc_file) {
+							return Err(
+								"Failed to open included file '%s': %s", inc_file_path,
+								strerror(errno)
+							);
+						}
+						defer(fclose, inc_file);
+
+						char next_display[PATH_MAX];
+						if (rel_dir && rel_dir[0]) {
+							snprintf(
+								next_display, sizeof(next_display), "%s/%.*s", rel_dir,
+								(int)inc_path_sv.len, inc_path_sv.data
+							);
+						} else {
+							snprintf(
+								next_display, sizeof(next_display), "%.*s", (int)inc_path_sv.len,
+								inc_path_sv.data
+							);
+						}
+
+						char next_rel_dir[PATH_MAX];
+						const char *inc_last_s = strrchr(next_display, '/');
+						if (inc_last_s) {
+							usize dlen = (usize)(inc_last_s - next_display);
+							snprintf(
+								next_rel_dir, sizeof(next_rel_dir), "%.*s", (int)dlen, next_display
+							);
+						} else {
+							next_rel_dir[0] = '\0';
+						}
+
+						Try(preprocess_lines(
+							inc_file, out, inc_file_path, next_display, next_rel_dir, project_name,
+							current_banner, depth + 1
+						));
+						continue;
+					}
+				}
+			}
+		}
+
+		if (trimmed.len > 0) {
+			emit_banner_if_needed(out, display_name, current_banner);
 		}
 
 		if (!in_array && check_declaration(line, out, project_name))
 			continue;
 
 		if (in_array) {
+			if (in_path_array && rel_dir && rel_dir[0]) {
+				char rewritten[1024];
+				rewrite_paths_in_line(line, rel_dir, rewritten, sizeof(rewritten));
+				snprintf(line, sizeof(line), "%s", rewritten);
+				line_sv = sv_fromc(line);
+			}
+
 			char *close_brace = find_closing_brace(line, &last_ch);
 
 			if (close_brace) {
@@ -134,6 +300,7 @@ Result preprocess_stream(FILE *in, FILE *out, const char *source_name)
 				bool need_comma = last_ch && last_ch != ',';
 				fprintf(out, "%s%s    NULL\n\t}%s", line, need_comma ? "," : "", close_brace + 1);
 				in_array = false;
+				in_path_array = false;
 			} else {
 				fputs(line, out);
 			}
@@ -143,6 +310,19 @@ Result preprocess_stream(FILE *in, FILE *out, const char *source_name)
 		char *open_brace = strchr(line, '{');
 		char *equal = strchr(line, '=');
 		if (open_brace && equal && open_brace > equal) {
+			bool is_path_array = sv_contains(line_sv, SV(".sources")) ||
+								 sv_contains(line_sv, SV(".includes")) ||
+								 sv_contains(line_sv, SV(".public_includes"));
+
+			if (is_path_array && rel_dir && rel_dir[0]) {
+				char rewritten[1024];
+				rewrite_paths_in_line(line, rel_dir, rewritten, sizeof(rewritten));
+				snprintf(line, sizeof(line), "%s", rewritten);
+				line_sv = sv_fromc(line);
+				open_brace = strchr(line, '{');
+				equal = strchr(line, '=');
+			}
+
 			const char *cast = get_array_cast(line_sv);
 			char *close_brace = find_closing_brace(open_brace + 1, NULL);
 
@@ -156,9 +336,10 @@ Result preprocess_stream(FILE *in, FILE *out, const char *source_name)
 				const char *sep = (empty || has_trailing_comma) ? " " : ", ";
 				fprintf(out, "%s%s{%s%sNULL }%s", line, cast, open_brace + 1, sep, close_brace + 1);
 			} else {
-				*open_brace = '\0';
+				*open_brace	  = '\0';
 				char *after = open_brace + 1;
 				in_array = true;
+				in_path_array = is_path_array;
 				last_ch = 0;
 				find_closing_brace(after, &last_ch);
 				fprintf(out, "%s%s{%s%s", line, cast, after, strchr(after, '\n') ? "" : "\n");
@@ -169,8 +350,21 @@ Result preprocess_stream(FILE *in, FILE *out, const char *source_name)
 	}
 
 	if (in_array) {
-		return Err("Unclosed array in '%s'", src_name);
+		return Err("Unclosed array in '%s'", source_name);
 	}
+
+	return Ok(NULL);
+}
+
+Result preprocess_stream(FILE *in, FILE *out, const char *source_name)
+{
+	const char *src_name = source_name ? source_name : "<stream>";
+	attach_header(out);
+
+	const char *display_name = get_display_name(src_name);
+	char current_banner[256] = { 0 };
+	char project_name[64] = { 0 };
+	Try(preprocess_lines(in, out, src_name, display_name, "", project_name, current_banner, 0));
 
 	if (!project_name[0]) {
 		return Err("No Project declaration found in '%s'", src_name);
