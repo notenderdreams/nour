@@ -107,10 +107,12 @@ __attribute__((unused)) static const char *const messages[] = {
 
 static inline Result _err_code(int code, ...)
 {
-	char		fallback[64];
+	char fallback[64];
 	const char *fmt = NULL;
 	if (code < 0 || (size_t)code >= sizeof(messages) / sizeof(messages[0]) || !messages[code]) {
-		snprintf(fallback, sizeof(fallback), "something went wrong: unknown error occurred (%d)", code);
+		snprintf(
+			fallback, sizeof(fallback), "something went wrong: unknown error occurred (%d)", code
+		);
 		fmt = fallback;
 	} else {
 		fmt = messages[code];
@@ -123,10 +125,9 @@ static inline Result _err_code(int code, ...)
 	return res;
 }
 
-#define Err(first, ...)                                        \
-	_Generic((first),                                          \
-		char *: _err_fmt,                                      \
-		const char *: _err_fmt,                                \
-		default: _err_code)(first, ##__VA_ARGS__)
+#define Err(first, ...)                                                              \
+	_Generic((first), char *: _err_fmt, const char *: _err_fmt, default: _err_code)( \
+		first, ##__VA_ARGS__                                                         \
+	)
 
 #define err(...) Err(__VA_ARGS__)

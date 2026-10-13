@@ -152,6 +152,132 @@ static Result collect_module_sources(
 	return Ok(NULL);
 }
 
+static void append_lib_compile_flags(Arena *a, const Library *lib, const char *project_dir)
+{
+	if (lib->cflags) {
+		for (const char **f = lib->cflags; *f; ++f) {
+			rnstr_printf(a, " %s", *f);
+		}
+	}
+
+	rnstr_printf(a, " -I\"%s/.nour\"", project_dir);
+
+	if (lib->includes) {
+		for (const char **inc = lib->includes; *inc; ++inc) {
+			rnstr_printf(a, " -I\"%s/%s\"", project_dir, *inc);
+		}
+	}
+
+	if (lib->public_includes) {
+		for (const char **inc = lib->public_includes; *inc; ++inc) {
+			rnstr_printf(a, " -I\"%s/%s\"", project_dir, *inc);
+		}
+	}
+
+	if (lib->mods) {
+		for (usize i = 0; lib->mods[i]; ++i) {
+			collect_module_includes(a, lib->mods[i], project_dir, 0);
+		}
+	}
+
+	if (lib->defines) {
+		for (const char **d = lib->defines; *d; ++d) {
+			rnstr_printf(a, " -D%s", *d);
+		}
+	}
+
+	if (lib->public_defines) {
+		for (const char **d = lib->public_defines; *d; ++d) {
+			rnstr_printf(a, " -D%s", *d);
+		}
+	}
+}
+
+static Result
+build_library(const Library *lib, const Project *proj, const char *project_dir, const char *profile)
+{
+	const char *cc = (proj->cc && proj->cc[0]) ? proj->cc : "cc";
+	const char *build_dir = project_build_dir(proj);
+
+	Try(generate_config_header(proj, (const Target *)lib, project_dir, profile));
+
+	if ((!lib->sources || !lib->sources[0]) && (!lib->mods || !lib->mods[0])) {
+		return Err(ERR_TARGET_NO_SOURCES, lib->name);
+	}
+
+	arena_scratch(a, 16 * 1024);
+
+	const char *prefix = (strncmp(lib->name, "lib", 3) == 0) ? "" : "lib";
+	const char *ext = (lib->type == STATIC) ? ".a" : ".so";
+	const char *out_name = rnstr_sprintf(&a, "%s%s%s", prefix, lib->name, ext);
+	const char *out_path = rnstr_path(&a, project_dir, build_dir, out_name, NULL);
+	const char *obj_dir = rnstr_sprintf(&a, "%s/.nour/obj/%s", project_dir, lib->name);
+
+	if (lib->type == STATIC) {
+		Try(fs_create_dir(obj_dir));
+	}
+
+	rnstr_begin(&a);
+
+	if (lib->type == STATIC) {
+		rnstr_printf(&a, "cd \"%s\" && %s -c", obj_dir, cc);
+	} else if (lib->type == SHARED) {
+		rnstr_printf(&a, "%s -shared -fPIC -o \"%s\"", cc, out_path);
+	} else {
+		return Err(ERR_UNKNOWN_TARGET, lib->name);
+	}
+
+	append_lib_compile_flags(&a, lib, project_dir);
+
+	usize total_sources = 0;
+	if (lib->sources) {
+		for (const char **src = lib->sources; *src; ++src) {
+			char pattern[PATH_MAX];
+			snprintf(pattern, sizeof(pattern), "%s/%s", project_dir, *src);
+
+			glob_t g;
+			i32 ret = glob(pattern, 0, NULL, &g);
+			if (ret) {
+				return Err(ERR_TARGET_NO_MATCH, lib->name, *src);
+			}
+			defer(globfree, &g);
+
+			for (usize k = 0; k < (usize)g.gl_pathc; ++k) {
+				rnstr_printf(&a, " \"%s\"", g.gl_pathv[k]);
+				++total_sources;
+			}
+		}
+	}
+
+	if (lib->mods) {
+		for (usize i = 0; lib->mods[i]; ++i) {
+			Try(
+				collect_module_sources(&a, lib->mods[i], project_dir, NULL, NULL, &total_sources, 0)
+			);
+		}
+	}
+
+	if (!total_sources) {
+		return Err(ERR_TARGET_ZERO_SOURCES, lib->name);
+	}
+
+	if (lib->type == STATIC) {
+		rnstr_printf(&a, " && ar rcs \"%s\" *.o && rm -f *.o", out_path);
+	} else if (lib->ldflags) {
+		for (const char **ld = lib->ldflags; *ld; ++ld) {
+			rnstr_printf(&a, " %s", *ld);
+		}
+	}
+
+	const char *cmd = rnstr_finish(&a);
+	i32 status = system(cmd);
+	if (status) {
+		return Err(ERR_BUILD_FAILED, lib->name);
+	}
+
+	return Ok(NULL);
+}
+
 static Result build_executable(
 	const Executable *exe, const Project *proj, const char *project_dir, const char *profile
 ) {
@@ -290,7 +416,7 @@ Result build_project_target(
 				if (target->kind == T_EXECUTABLE) {
 					return build_executable((Executable *)target, proj, project_dir, profile);
 				} else if (target->kind == T_LIBRARY) {
-					return Err(ERR_LIB_UNIMPLEMENTED, target->name);
+					return build_library((Library *)target, proj, project_dir, profile);
 				} else {
 					return Err(ERR_UNKNOWN_TARGET, target->name);
 				}
@@ -305,7 +431,7 @@ Result build_project_target(
 		if (target->kind == T_EXECUTABLE) {
 			Try(build_executable((Executable *)target, proj, project_dir, profile));
 		} else if (target->kind == T_LIBRARY) {
-			return Err(ERR_LIB_UNIMPLEMENTED, target->name);
+			Try(build_library((Library *)target, proj, project_dir, profile));
 		} else {
 			return Err(ERR_UNKNOWN_TARGET, target->name);
 		}

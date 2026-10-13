@@ -41,7 +41,5 @@ clean:
     rm -rf bin build sandbox/build nour tests/fixtures/*/actual.c .nour sandbox/.nour
 
 fmt:
-	find . -type f \( -name "*.c" -o -name "*.h" \) ! -name "nour_header.h" ! -path "*/fixtures/*" ! -path "*/build/*" ! -path "*/.git/*" -exec clang-format -i {} +
-	find . -type f \( -name "*.c" -o -name "*.h" \) ! -name "nour_header.h" ! -path "*/fixtures/*" ! -path "*/build/*" ! -path "*/.git/*" -exec perl -0777 -pi -e 's/(\n[ \t]*\))\n[ \t]*\{/$1 {/g' {} +
-	python3 scripts/unalign_locals.py
+	python3 scripts/fmt.py
 

@@ -2,6 +2,7 @@
 #include "builder.h"
 #include "nour.h"
 #include "types.h"
+#include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -204,23 +205,134 @@ TEST(Builder, build_executable_compilation_failure)
 	ASSERT_RESULT_ERR_CONTAINS(build_project(&proj, td.path), "Build failed for target 'broken_app'");
 }
 
-TEST(Builder, build_unsupported_library_target)
+TEST(Builder, build_static_library)
 {
 	TMPDIR_AUTO(td);
 
+	write_test_file(td.path, "src/add.c", "int add(int a, int b) { return a + b; }\n");
+	write_test_file(td.path, "src/sub.c", "int sub(int a, int b) { return a - b; }\n");
+
 	Library lib = {
-		.kind = T_LIBRARY,
-		.name = "mylib",
-		.type = STATIC,
+		.kind	 = T_LIBRARY,
+		.name	 = "calc",
+		.type	 = STATIC,
+		.sources = (const char *[]){ "src/*.c", NULL },
 	};
 	Project proj = {
-		.name	 = "LibProject",
-		.targets = (void *[]){ &lib, NULL },
+		.name	   = "CalcLibProj",
+		.build_dir = "build",
+		.targets   = (void *[]){ &lib, NULL },
 	};
 
-	ASSERT_RESULT_ERR_CONTAINS(
-		build_project(&proj, td.path), "library builds are not yet implemented"
+	Result res = build_project(&proj, td.path);
+	ASSERT_RESULT_OK(res);
+
+	char lib_path[512];
+	snprintf(lib_path, sizeof(lib_path), "%s/build/libcalc.a", td.path);
+	ASSERT_TRUE(access(lib_path, F_OK) == 0);
+
+	// Test linking against the produced archive
+	write_test_file(
+		td.path, "src/main.c",
+		"int add(int, int); int sub(int, int);\n"
+		"int main(void) { return (add(2, 3) == 5 && sub(5, 3) == 2) ? 0 : 1; }\n"
 	);
+	char compile_cmd[1024];
+	snprintf(
+		compile_cmd, sizeof(compile_cmd), "cc \"%s/src/main.c\" \"%s\" -o \"%s/build/test_app\"",
+		td.path, lib_path, td.path
+	);
+	ASSERT_EQ(system(compile_cmd), 0);
+
+	char run_cmd[512];
+	snprintf(run_cmd, sizeof(run_cmd), "\"%s/build/test_app\"", td.path);
+	ASSERT_EQ(system(run_cmd), 0);
+}
+
+TEST(Builder, build_shared_library)
+{
+	TMPDIR_AUTO(td);
+
+	write_test_file(td.path, "src/ops.c", "int multiply(int a, int b) { return a * b; }\n");
+
+	Library lib = {
+		.kind	 = T_LIBRARY,
+		.name	 = "ops",
+		.type	 = SHARED,
+		.sources = (const char *[]){ "src/ops.c", NULL },
+	};
+	Project proj = {
+		.name	   = "OpsLibProj",
+		.build_dir = "build",
+		.targets   = (void *[]){ &lib, NULL },
+	};
+
+	Result res = build_project(&proj, td.path);
+	ASSERT_RESULT_OK(res);
+
+	char lib_path[512];
+	snprintf(lib_path, sizeof(lib_path), "%s/build/libops.so", td.path);
+	ASSERT_TRUE(access(lib_path, F_OK) == 0);
+
+	// Load shared library and call its function
+	void *h = dlopen(lib_path, RTLD_NOW);
+	ASSERT_TRUE(h != NULL);
+	typedef int (*OpsMulFn)(int, int);
+	OpsMulFn mul = (OpsMulFn)dlsym(h, "multiply");
+	ASSERT_TRUE(mul != NULL);
+	ASSERT_EQ(mul(6, 7), 42);
+	dlclose(h);
+}
+
+TEST(Builder, build_library_with_modules)
+{
+	TMPDIR_AUTO(td);
+
+	write_test_file(td.path, "core/core.c", "int core_fn(void) { return 42; }\n");
+	write_test_file(
+		td.path, "src/api.c", "int core_fn(void); int api_fn(void) { return core_fn(); }\n"
+	);
+
+	Module core_mod = {
+		.name	 = "core",
+		.sources = (const char *[]){ "core/*.c", NULL },
+	};
+	Library lib = {
+		.kind	 = T_LIBRARY,
+		.name	 = "mylib",
+		.type	 = STATIC,
+		.sources = (const char *[]){ "src/api.c", NULL },
+		.mods	 = (Module *[]){ &core_mod, NULL },
+	};
+	Project proj = {
+		.name	   = "ModLibProj",
+		.build_dir = "build",
+		.targets   = (void *[]){ &lib, NULL },
+	};
+
+	Result res = build_project(&proj, td.path);
+	ASSERT_RESULT_OK(res);
+
+	char lib_path[512];
+	snprintf(lib_path, sizeof(lib_path), "%s/build/libmylib.a", td.path);
+	ASSERT_TRUE(access(lib_path, F_OK) == 0);
+
+	// Test linking against archive and calling module-dependent function
+	write_test_file(
+		td.path, "src/main.c",
+		"int api_fn(void);\n"
+		"int main(void) { return (api_fn() == 42) ? 0 : 1; }\n"
+	);
+	char compile_cmd[1024];
+	snprintf(
+		compile_cmd, sizeof(compile_cmd), "cc \"%s/src/main.c\" \"%s\" -o \"%s/build/test_app\"",
+		td.path, lib_path, td.path
+	);
+	ASSERT_EQ(system(compile_cmd), 0);
+
+	char run_cmd[512];
+	snprintf(run_cmd, sizeof(run_cmd), "\"%s/build/test_app\"", td.path);
+	ASSERT_EQ(system(run_cmd), 0);
 }
 
 TEST(Builder, generated_config_header_and_profiles)

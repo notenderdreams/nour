@@ -9,6 +9,15 @@
   "languages": {
     "C": {
       "format_on_save": "on",
+      "formatter": {
+        "external": {
+          "command": "python3",
+          "arguments": [
+            "scripts/fmt.py",
+            "-"
+          ]
+        }
+      },
       "tab_size": 4,
       "hard_tabs": true
     }
