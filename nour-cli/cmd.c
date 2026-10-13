@@ -106,11 +106,11 @@ Result cmd_new(Context *ctx)
 
 	const char *project_name = ctx->args[0];
 	if (!is_valid_name(project_name)) {
-		return Err("invalid project name '%s'. Must be a valid C identifier", project_name);
+		return Err(ERR_INVALID_NAME, project_name);
 	}
 
 	if (fs_dir_exists(project_name)) {
-		return Err("directory '%s' already exists", project_name);
+		return Err(ERR_DIR_EXISTS, project_name);
 	}
 
 	Try(fs_create_dir(project_name));
@@ -127,7 +127,7 @@ Result cmd_init(Context *ctx)
 {
 	char cwd[PATH_MAX];
 	if (!getcwd(cwd, sizeof(cwd)))
-		return Err("failed to get current working directory");
+		return Err(ERR_GETCWD);
 
 	char *project_name = strrchr(cwd, '/');
 	project_name = project_name ? project_name + 1 : cwd;
@@ -137,11 +137,11 @@ Result cmd_init(Context *ctx)
 	}
 
 	if (!is_valid_name(project_name)) {
-		return Err("invalid project name '%s'. Must be a valid C identifier", project_name);
+		return Err(ERR_INVALID_NAME, project_name);
 	}
 
 	if (fs_file_exists("project.nour")) {
-		return Err("'project.nour' already exists in current directory");
+		return Err(ERR_FILE_EXISTS, "project.nour");
 	}
 
 	Try(scaffold_project(project_name, "."));
@@ -180,7 +180,7 @@ static Result execute_project_build(
 	const char *so_path = rnstr_sprintf(&a, "%s/.nour/libnour.so", project_dir);
 
 	if (!fs_file_exists(nour_path)) {
-		return Err("could not find '%s'", nour_path);
+		return Err(ERR_FILE_NOT_FOUND, nour_path);
 	}
 
 	f64 total_start = time_ms();
@@ -209,10 +209,10 @@ static Result execute_project_build(
 			}
 		}
 		if (!matched_target) {
-			return Err("target '%s' not found in project '%s'", target_name, proj->name);
+			return Err(ERR_TARGET_NOT_FOUND, target_name, proj->name);
 		}
 		if (out_bin && matched_target->kind != T_EXECUTABLE) {
-			return Err("target '%s' is not an executable", target_name);
+			return Err(ERR_NOT_EXECUTABLE, target_name);
 		}
 	}
 
@@ -302,7 +302,7 @@ Result cmd_run(Context *ctx)
 	Try(execute_project_build(project_dir, target_name, profile, bin_path, sizeof(bin_path)));
 
 	if (!bin_path[0]) {
-		return Err("no executable target found to run in project '%s'", project_dir);
+		return Err(ERR_NO_EXE_TARGET, project_dir);
 	}
 
 	arena_scratch(a, 2048);
@@ -327,7 +327,7 @@ Result cmd_run(Context *ctx)
 
 	if (ret != 0) {
 		i32 code = WIFEXITED(ret) ? WEXITSTATUS(ret) : WIFSIGNALED(ret) ? 128 + WTERMSIG(ret) : ret;
-		return Err("target '%s' exited with code %d", bin_path, code);
+		return Err(ERR_TARGET_EXIT, bin_path, code);
 	}
 
 	return Ok(NULL);

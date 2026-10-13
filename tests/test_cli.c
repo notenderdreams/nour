@@ -299,12 +299,12 @@ TEST(CLI, target_validation)
 	// Attempt to build nonexistent target
 	ASSERT_TRUE(run_cli(td.path, "build target_app --target nonexistent", &out));
 	ASSERT_EQ(out.exit_code, 1);
-	ASSERT_STR_CONTAINS(out.stderr_str, "target 'nonexistent' not found in project");
+	ASSERT_STR_CONTAINS(out.stderr_str, "Target 'nonexistent' not found in project");
 
 	// Attempt to run nonexistent target
 	ASSERT_TRUE(run_cli(td.path, "run target_app --target nonexistent", &out));
 	ASSERT_EQ(out.exit_code, 1);
-	ASSERT_STR_CONTAINS(out.stderr_str, "target 'nonexistent' not found in project");
+	ASSERT_STR_CONTAINS(out.stderr_str, "Target 'nonexistent' not found in project");
 }
 
 TEST(CLI, run_forwards_existing_directory_name)

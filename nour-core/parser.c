@@ -179,7 +179,7 @@ static Result preprocess_lines(
 	char *project_name, char *current_banner, usize depth
 ) {
 	if (depth > 16) {
-		return Err("Include depth limit exceeded (max 16) while processing '%s'", source_name);
+		return Err(ERR_DEPTH_LIMIT, 16, source_name);
 	}
 
 	char line[1024];
@@ -350,7 +350,7 @@ static Result preprocess_lines(
 	}
 
 	if (in_array) {
-		return Err("Unclosed array in '%s'", source_name);
+		return Err(ERR_UNCLOSED_ARRAY, source_name);
 	}
 
 	return Ok(NULL);
@@ -367,7 +367,7 @@ Result preprocess_stream(FILE *in, FILE *out, const char *source_name)
 	Try(preprocess_lines(in, out, src_name, display_name, "", project_name, current_banner, 0));
 
 	if (!project_name[0]) {
-		return Err("No Project declaration found in '%s'", src_name);
+		return Err(ERR_NO_PROJECT, src_name);
 	}
 
 	attach_entrypoint(out, project_name);
@@ -382,7 +382,7 @@ Result preprocess_str(const char *input_str, char **output_str)
 	*output_str = NULL;
 
 	if (!input_str[0]) {
-		return Err("No Project declaration found in '<memory>'");
+		return Err(ERR_NO_PROJECT, "<memory>");
 	}
 
 	FILE *in = fmemopen((void *)input_str, strlen(input_str), "r");

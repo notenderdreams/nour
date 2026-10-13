@@ -31,7 +31,7 @@ Result fs_create_dir(const char *path)
 	i32 ret = system(cmd);
 
 	if (ret != 0) {
-		return Err("failed to create directory '%s'", path);
+		return Err(ERR_DIR_CREATE, path);
 	}
 	return Ok(NULL);
 }
@@ -40,12 +40,12 @@ Result fs_create_file(const char *path, const char *content)
 {
 	FILE *f = fopen(path, "w");
 	if (!f) {
-		return Err("failed to open file '%s': %s", path, strerror(errno));
+		return Err(ERR_FILE_OPEN, path, strerror(errno));
 	}
 	defer(fclose, f);
 
 	if (content && fputs(content, f) == EOF) {
-		return Err("failed to write content to '%s'", path);
+		return Err(ERR_FILE_WRITE, path);
 	}
 	return Ok(NULL);
 }
@@ -60,7 +60,7 @@ Result fs_remove_dir(const char *path)
 	i32 ret = system(cmd);
 
 	if (ret != 0) {
-		return Err("failed to remove directory '%s'", path);
+		return Err(ERR_FILE_REMOVE, path);
 	}
 	return Ok(NULL);
 }

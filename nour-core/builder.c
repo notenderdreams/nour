@@ -126,7 +126,7 @@ static Result collect_module_sources(
 			i32 ret = glob(pattern, 0, NULL, &g);
 			if (ret) {
 				const char *mod_name = mod->name ? mod->name : "anonymous";
-				return Err("Module '%s': no files found matching '%s'", mod_name, *src);
+				return Err(ERR_MODULE_NO_MATCH, mod_name, *src);
 			}
 			defer(globfree, &g);
 
@@ -162,7 +162,7 @@ static Result build_executable(
 
 	const char *root = resolve_executable_root(exe, project_dir);
 	if (exe->root && !root) {
-		return Err("Target '%s': root file '%s' not found", exe->name, exe->root);
+		return Err(ERR_TARGET_NO_ROOT, exe->name, exe->root);
 	}
 
 	arena_scratch(a, 16 * 1024);
@@ -208,7 +208,7 @@ static Result build_executable(
 
 	// Source files
 	if ((!exe->sources || !exe->sources[0]) && !root && (!exe->mods || !exe->mods[0])) {
-		return Err("Target '%s' has no sources specified", exe->name);
+		return Err(ERR_TARGET_NO_SOURCES, exe->name);
 	}
 
 	usize total_sources = 0;
@@ -220,7 +220,7 @@ static Result build_executable(
 			glob_t g;
 			i32 ret = glob(pattern, 0, NULL, &g);
 			if (ret) {
-				return Err("Target '%s': no files found matching '%s'", exe->name, *src);
+				return Err(ERR_TARGET_NO_MATCH, exe->name, *src);
 			}
 			defer(globfree, &g);
 
@@ -250,7 +250,7 @@ static Result build_executable(
 	}
 
 	if (!total_sources) {
-		return Err("Target '%s': zero source files resolved", exe->name);
+		return Err(ERR_TARGET_ZERO_SOURCES, exe->name);
 	}
 
 	// Link flags
@@ -264,7 +264,7 @@ static Result build_executable(
 	const char *cmd = rnstr_finish(&a);
 	i32 status = system(cmd);
 	if (status) {
-		return Err("Build failed for target '%s'", exe->name);
+		return Err(ERR_BUILD_FAILED, exe->name);
 	}
 
 	return Ok(NULL);
@@ -290,13 +290,13 @@ Result build_project_target(
 				if (target->kind == T_EXECUTABLE) {
 					return build_executable((Executable *)target, proj, project_dir, profile);
 				} else if (target->kind == T_LIBRARY) {
-					return Err("Target '%s': library builds are not yet implemented", target->name);
+					return Err(ERR_LIB_UNIMPLEMENTED, target->name);
 				} else {
-					return Err("Target '%s': unknown target kind", target->name);
+					return Err(ERR_UNKNOWN_TARGET, target->name);
 				}
 			}
 		}
-		return Err("Target '%s' not found in project '%s'", target_name, proj->name);
+		return Err(ERR_TARGET_NOT_FOUND, target_name, proj->name);
 	}
 
 	for (usize i = 0; proj->targets[i]; ++i) {
@@ -305,9 +305,9 @@ Result build_project_target(
 		if (target->kind == T_EXECUTABLE) {
 			Try(build_executable((Executable *)target, proj, project_dir, profile));
 		} else if (target->kind == T_LIBRARY) {
-			return Err("Target '%s': library builds are not yet implemented", target->name);
+			return Err(ERR_LIB_UNIMPLEMENTED, target->name);
 		} else {
-			return Err("Target '%s': unknown target kind", target->name);
+			return Err(ERR_UNKNOWN_TARGET, target->name);
 		}
 	}
 

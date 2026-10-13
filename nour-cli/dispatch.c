@@ -357,7 +357,7 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 				char sc = arg[j];
 				Flag *f = flag_find_short(cmd->flags, sc);
 				if (!f)
-					return Err("unknown flag '-%c'", sc);
+					return Err(ERR_UNKNOWN_SHORT_FLAG, sc);
 				f->_set = true;
 
 				if (f->type == FLAG_BOOL) {
@@ -372,7 +372,7 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 					j = (i32)strlen(arg);
 				} else {
 					if (i + 1 >= argc || argv[i + 1][0] == '-') {
-						return Err("'-%c' requires a value", sc);
+						return Err(ERR_SHORT_REQUIRES_VAL, sc);
 					}
 					val = argv[++i];
 					j = (i32)strlen(arg);
@@ -386,7 +386,7 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 					char *e;
 					f->val.i = (i32)strtol(val, &e, 10);
 					if (e == val || *e != '\0')
-						return Err("'-%c' expects integer", sc);
+						return Err(ERR_SHORT_EXPECTS_INT, sc);
 					break;
 				}
 				case FLAG_BOOL:
@@ -396,7 +396,7 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 			++i;
 		} else {
 			if (ctx->n_args >= MAX_ARGS)
-				return Err("too many arguments");
+				return Err(ERR_TOO_MANY_ARGS);
 			ctx->args[ctx->n_args++] = arg;
 			++i;
 		}
@@ -404,7 +404,7 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 
 	for (i32 i = 0; i < DISPATCH_MAX_FLAGS && cmd->flags[i].name; ++i) {
 		if (cmd->flags[i].required && !cmd->flags[i]._set) {
-			return Err("required flag '--%s' not provided", cmd->flags[i].name);
+			return Err(ERR_MISSING_REQ_FLAG, cmd->flags[i].name);
 		}
 	}
 	return Ok(NULL);

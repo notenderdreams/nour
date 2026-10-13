@@ -34,14 +34,12 @@ static inline Result Ok(void *value)
 	};
 }
 
-PRINTF_FMT(1, 2) static inline Result Err(const char *fmt, ...)
+static inline Result _vresult_err(const char *fmt, va_list args)
 {
-	va_list args, args_copy;
-	va_start(args, fmt);
+	va_list args_copy;
 	va_copy(args_copy, args);
 
 	i32 len = vsnprintf(NULL, 0, fmt, args);
-	va_end(args);
 
 	char *buf = NULL;
 	if (len >= 0) {
@@ -58,6 +56,17 @@ PRINTF_FMT(1, 2) static inline Result Err(const char *fmt, ...)
 		.error = buf,
 	};
 }
+
+PRINTF_FMT(1, 2) static inline Result _err_fmt(const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	Result res = _vresult_err(fmt, args);
+	va_end(args);
+	return res;
+}
+
+#include "error.h"
 
 static inline void result_free(Result *res)
 {

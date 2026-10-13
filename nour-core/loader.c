@@ -18,7 +18,7 @@ Result compile_nour(const char *src, const char *dest)
 
 	i32 ret = system(cmd);
 	if (ret) {
-		return Err("Failed to compile '%s' into shared library", src);
+		return Err(ERR_COMPILE_FAIL, src);
 	}
 	return Ok(NULL);
 }
@@ -28,12 +28,12 @@ Result load_project(const char *path)
 	loader_close();
 	g_loader_handle = dlopen(path, RTLD_NOW);
 	if (!g_loader_handle) {
-		return Err("dlopen failed: %s", dlerror());
+		return Err(ERR_DLOPEN, dlerror());
 	}
 
 	NourGetProjectFn get_project = (NourGetProjectFn)dlsym(g_loader_handle, "nour_get_project");
 	if (!get_project) {
-		Result r = Err("dlsym failed: %s", dlerror());
+		Result r = Err(ERR_DLSYM, dlerror());
 		loader_close();
 		return r;
 	}
@@ -41,7 +41,7 @@ Result load_project(const char *path)
 	Project *project = get_project();
 	if (!project) {
 		loader_close();
-		return Err("nour_get_project returned NULL");
+		return Err(ERR_NULL_PROJECT);
 	}
 
 	return Ok(project);

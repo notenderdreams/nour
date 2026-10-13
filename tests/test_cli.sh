@@ -77,8 +77,8 @@ test_assert "nour new --help" 0 "'${NOUR_BIN}' new --help" "new — Create a new
 # 3. Error handling
 test_assert "unknown command" 1 "'${NOUR_BIN}' nonexistent_cmd" "" "error: unknown command 'nonexistent_cmd'"
 test_assert "unknown flag" 1 "'${NOUR_BIN}' build --bad-flag" "" "error: unknown flag '--bad-flag'"
-test_assert "build invalid target" 1 "'${NOUR_BIN}' build --target not_exists" "" "target 'not_exists' not found in project"
-test_assert "run invalid target" 1 "'${NOUR_BIN}' run --target not_exists" "" "target 'not_exists' not found in project"
+test_assert "build invalid target" 1 "'${NOUR_BIN}' build --target not_exists" "" "Target 'not_exists' not found in project"
+test_assert "run invalid target" 1 "'${NOUR_BIN}' run --target not_exists" "" "Target 'not_exists' not found in project"
 test_assert "new without name" 1 "'${NOUR_BIN}' new" "" "requires a project name"
 test_assert "new invalid identifier" 1 "'${NOUR_BIN}' new 123-bad" "" "invalid project name"
 
