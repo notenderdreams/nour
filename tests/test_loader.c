@@ -39,11 +39,11 @@ TEST(Loader, end_to_end_project)
 	ASSERT_RESULT_OK(res);
 
 	// 2. Compile to .so
-	res = compile_nour(c_path, so_path);
+	res = compile_manifest(c_path, so_path);
 	ASSERT_RESULT_OK(res);
 
 	// 3. Load project
-	res = load_project(so_path);
+	res = load_manifest(so_path);
 	ASSERT_RESULT_OK(res);
 	ASSERT_NOT_NULL(res.value);
 
@@ -82,7 +82,7 @@ TEST(Loader, end_to_end_project)
 
 TEST(Loader, fails_on_missing_so)
 {
-	Result res = load_project("/tmp/nour_does_not_exist_xyz123.so");
+	Result res = load_manifest("/tmp/nour_does_not_exist_xyz123.so");
 	ASSERT_RESULT_ERR(res);
 }
 
@@ -102,7 +102,7 @@ TEST(Loader, fails_on_invalid_c_compilation)
 	}
 
 	Result res;
-	TEST_SILENT(res = compile_nour(bad_c, out_so));
+	TEST_SILENT(res = compile_manifest(bad_c, out_so));
 	ASSERT_RESULT_ERR(res);
 }
 
@@ -206,11 +206,11 @@ TEST(Loader, end_to_end_project_with_nested_modules)
 	ASSERT_RESULT_OK(res);
 
 	// 2. Compile to .so
-	res = compile_nour(c_path, so_path);
+	res = compile_manifest(c_path, so_path);
 	ASSERT_RESULT_OK(res);
 
 	// 3. Load project
-	res = load_project(so_path);
+	res = load_manifest(so_path);
 	ASSERT_RESULT_OK(res);
 	ASSERT_NOT_NULL(res.value);
 

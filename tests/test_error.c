@@ -75,6 +75,21 @@ TEST(Error, construct_raw_format_compatibility)
 	result_free(&r2);
 }
 
+TEST(Error, deps_resolution_errors)
+{
+	Result r1 = Err(ERR_CIRCULAR_DEP, "app -> core -> app");
+	ASSERT_FALSE(r1.ok);
+	ASSERT_TRUE(r1.error != NULL);
+	ASSERT_STR_EQ(r1.error, "circular dependency detected: app -> core -> app");
+	result_free(&r1);
+
+	Result r2 = Err(ERR_INVALID_DEP, "app", "unknown");
+	ASSERT_FALSE(r2.ok);
+	ASSERT_TRUE(r2.error != NULL);
+	ASSERT_STR_EQ(r2.error, "target 'app' has invalid dependency 'unknown'");
+	result_free(&r2);
+}
+
 TEST(Error, unknown_or_out_of_bounds_code)
 {
 	Result r = Err(9999);

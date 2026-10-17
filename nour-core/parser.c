@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool check_declaration(const char *line, FILE *out, char *project_name)
+static bool check_declaration(const char *line, FILE *out, char *project_name, Result *err)
 {
 	StrView sv = sv_trim(sv_fromc(line));
 	StrView type_sv;
@@ -39,6 +39,22 @@ static bool check_declaration(const char *line, FILE *out, char *project_name)
 	rest = sv_trim(rest);
 	if (sv_empty(name_sv) || !sv_starts(rest, SV("{"))) {
 		return false;
+	}
+
+	// The name becomes a C identifier; validate it up front with a clear
+	// diagnostic instead of letting the compiler fail opaquely later.
+	char namebuf[128];
+	if (name_sv.len >= sizeof(namebuf)) {
+		if (err)
+			*err = Err(ERR_INVALID_DECL, "<declaration name too long>");
+		return true; // consumed, but invalid
+	}
+	memcpy(namebuf, name_sv.data, name_sv.len);
+	namebuf[name_sv.len] = '\0';
+	if (!is_valid_name(namebuf)) {
+		if (err)
+			*err = Err(ERR_INVALID_DECL, namebuf);
+		return true;
 	}
 
 	fputs(line, out);
@@ -126,6 +142,13 @@ static void emit_banner_if_needed(FILE *out, const char *display_name, char *cur
 
 static void rewrite_path_item(const char *item, usize len, const char *dir, char *out, usize cap)
 {
+	bool truncated = false;
+	usize need = len + strlen(dir) + 2;
+
+	if (cap < need + 1) {
+		truncated = true;
+	}
+
 	if (!dir || !dir[0]) {
 		snprintf(out, cap, "%.*s", (int)len, item);
 		return;
@@ -134,6 +157,12 @@ static void rewrite_path_item(const char *item, usize len, const char *dir, char
 		item += 2;
 		len -= 2;
 	}
+	if (truncated) {
+		// Can't fit dir + item: leave the original text untouched rather
+		// than silently producing a broken path.
+		snprintf(out, cap, "%.*s", (int)len, item);
+		return;
+	}
 	if (len == 0 || (len == 1 && item[0] == '.')) {
 		snprintf(out, cap, "%s", dir);
 	} else if (len > 0 && item[0] == '/') {
@@ -141,6 +170,14 @@ static void rewrite_path_item(const char *item, usize len, const char *dir, char
 	} else {
 		snprintf(out, cap, "%s/%.*s", dir, (int)len, item);
 	}
+}
+
+// Upper bound for the rewrite output: each quoted span grows by at most
+// strlen(dir)+1, and there can be at most len/2 spans.
+static usize rewrite_paths_needed(const char *line, const char *dir)
+{
+	usize n = strlen(line);
+	return n + (n / 2 + 1) * (strlen(dir) + 2) + 16;
 }
 
 static void rewrite_paths_in_line(const char *line, const char *dir, char *out, usize cap)
@@ -174,6 +211,33 @@ static void rewrite_paths_in_line(const char *line, const char *dir, char *out, 
 	out[out_len] = '\0';
 }
 
+typedef struct {
+	char *data;
+	usize cap;
+} OwnedBuf;
+
+static void owned_free(OwnedBuf *b)
+{
+	free(b->data);
+	b->data = NULL;
+	b->cap = 0;
+}
+
+static bool owned_grow(OwnedBuf *b, usize need)
+{
+	if (b->cap >= need)
+		return true;
+	usize ncap = b->cap ? b->cap : 256;
+	while (ncap < need)
+		ncap *= 2;
+	char *nb = realloc(b->data, ncap);
+	if (!nb)
+		return false;
+	b->data = nb;
+	b->cap = ncap;
+	return true;
+}
+
 static Result preprocess_lines(
 	FILE *in, FILE *out, const char *source_name, const char *display_name, const char *rel_dir,
 	char *project_name, char *current_banner, usize depth
@@ -182,12 +246,14 @@ static Result preprocess_lines(
 		return Err(ERR_DEPTH_LIMIT, 16, source_name);
 	}
 
-	char line[1024];
+	OwnedBuf lb __attribute__((cleanup(owned_free))) = {0};
+	OwnedBuf rw __attribute__((cleanup(owned_free))) = {0};
 	bool in_array = false;
 	bool in_path_array = false;
 	char last_ch = 0;
 
-	while (fgets(line, sizeof(line), in)) {
+	while (getline(&lb.data, &lb.cap, in) != -1) {
+		char *line = lb.data;
 		StrView line_sv = sv_fromc(line);
 		StrView trimmed = sv_trim(line_sv);
 		if (sv_starts(trimmed, SV("//"))) {
@@ -282,14 +348,24 @@ static Result preprocess_lines(
 			emit_banner_if_needed(out, display_name, current_banner);
 		}
 
-		if (!in_array && check_declaration(line, out, project_name))
-			continue;
+		if (!in_array) {
+			Result decl_err = {0};
+			bool handled = check_declaration(line, out, project_name, &decl_err);
+			if (decl_err.error) {
+				return decl_err;
+			}
+			if (handled) {
+				continue;
+			}
+		}
 
 		if (in_array) {
 			if (in_path_array && rel_dir && rel_dir[0]) {
-				char rewritten[1024];
-				rewrite_paths_in_line(line, rel_dir, rewritten, sizeof(rewritten));
-				snprintf(line, sizeof(line), "%s", rewritten);
+				usize need = rewrite_paths_needed(line, rel_dir);
+				if (owned_grow(&rw, need)) {
+					rewrite_paths_in_line(line, rel_dir, rw.data, rw.cap);
+					line = rw.data;
+				}
 				line_sv = sv_fromc(line);
 			}
 
@@ -315,9 +391,11 @@ static Result preprocess_lines(
 								 sv_contains(line_sv, SV(".public_includes"));
 
 			if (is_path_array && rel_dir && rel_dir[0]) {
-				char rewritten[1024];
-				rewrite_paths_in_line(line, rel_dir, rewritten, sizeof(rewritten));
-				snprintf(line, sizeof(line), "%s", rewritten);
+				usize need = rewrite_paths_needed(line, rel_dir);
+				if (owned_grow(&rw, need)) {
+					rewrite_paths_in_line(line, rel_dir, rw.data, rw.cap);
+					line = rw.data;
+				}
 				line_sv = sv_fromc(line);
 				open_brace = strchr(line, '{');
 				equal = strchr(line, '=');
@@ -346,6 +424,17 @@ static Result preprocess_lines(
 			}
 			continue;
 		}
+		// Scalar path fields (e.g. `.root = "main.c";`) in a manifest that
+		// lives inside another directory must be rewritten to stay relative
+		// to the top-level project.
+		if (!in_array && rel_dir && rel_dir[0] && sv_contains(line_sv, SV(".root")) &&
+			strchr(line, '"')) {
+			usize need = rewrite_paths_needed(line, rel_dir);
+			if (owned_grow(&rw, need)) {
+				rewrite_paths_in_line(line, rel_dir, rw.data, rw.cap);
+				line = rw.data;
+			}
+		}
 		fputs(line, out);
 	}
 
@@ -362,8 +451,8 @@ Result preprocess_stream(FILE *in, FILE *out, const char *source_name)
 	attach_header(out);
 
 	const char *display_name = get_display_name(src_name);
-	char current_banner[256] = { 0 };
-	char project_name[64] = { 0 };
+	char current_banner[256] = {0};
+	char project_name[64] = {0};
 	Try(preprocess_lines(in, out, src_name, display_name, "", project_name, current_banner, 0));
 
 	if (!project_name[0]) {

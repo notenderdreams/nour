@@ -40,12 +40,12 @@ TEST(Builder, build_executable_with_explicit_root)
 		.kind	 = T_EXECUTABLE,
 		.name	 = "my_app",
 		.root	 = "src/entry.c",
-		.sources = (const char *[]){ "src/calc.c", NULL },
+		.sources = (const char *[]){"src/calc.c", NULL},
 	};
 	Project proj = {
 		.name	   = "AppProject",
 		.build_dir = "build",
-		.targets   = (void *[]){ &exe, NULL },
+		.targets   = (void *[]){&exe, NULL},
 	};
 
 	Result res = build_project(&proj, td.path);
@@ -64,19 +64,21 @@ TEST(Builder, build_executable_default_root_fallback)
 {
 	TMPDIR_AUTO(td);
 
-	write_test_file(td.path, "src/main.c", "int helper(void); int main(void) { return helper(); }\n");
+	write_test_file(
+		td.path, "src/main.c", "int helper(void); int main(void) { return helper(); }\n"
+	);
 	write_test_file(td.path, "src/helper.c", "int helper(void) { return 0; }\n");
 
 	Executable exe = {
 		.kind	 = T_EXECUTABLE,
 		.name	 = "fallback_app",
 		.root	 = NULL,
-		.sources = (const char *[]){ "src/helper.c", NULL },
+		.sources = (const char *[]){"src/helper.c", NULL},
 	};
 	Project proj = {
 		.name	   = "FallbackProject",
 		.build_dir = "out",
-		.targets   = (void *[]){ &exe, NULL },
+		.targets   = (void *[]){&exe, NULL},
 	};
 
 	Result res = build_project(&proj, td.path);
@@ -102,12 +104,12 @@ TEST(Builder, build_executable_root_in_sources_dedup)
 		.kind	 = T_EXECUTABLE,
 		.name	 = "dedup_app",
 		.root	 = "src/main.c",
-		.sources = (const char *[]){ "src/*.c", NULL },
+		.sources = (const char *[]){"src/*.c", NULL},
 	};
 	Project proj = {
 		.name	   = "DedupProject",
 		.build_dir = "bin",
-		.targets   = (void *[]){ &exe, NULL },
+		.targets   = (void *[]){&exe, NULL},
 	};
 
 	Result res = build_project(&proj, td.path);
@@ -132,11 +134,11 @@ TEST(Builder, build_executable_missing_root_error)
 		.kind	 = T_EXECUTABLE,
 		.name	 = "missing_root_app",
 		.root	 = "src/non_existent.c",
-		.sources = (const char *[]){ "src/foo.c", NULL },
+		.sources = (const char *[]){"src/foo.c", NULL},
 	};
 	Project proj = {
 		.name	 = "BadRootProject",
-		.targets = (void *[]){ &exe, NULL },
+		.targets = (void *[]){&exe, NULL},
 	};
 
 	ASSERT_RESULT_ERR_CONTAINS(
@@ -156,7 +158,7 @@ TEST(Builder, build_executable_no_sources_or_root_error)
 	};
 	Project proj = {
 		.name	 = "EmptyProject",
-		.targets = (void *[]){ &exe, NULL },
+		.targets = (void *[]){&exe, NULL},
 	};
 
 	ASSERT_RESULT_ERR_CONTAINS(build_project(&proj, td.path), "has no sources specified");
@@ -172,11 +174,11 @@ TEST(Builder, build_executable_glob_no_match_error)
 		.kind	 = T_EXECUTABLE,
 		.name	 = "bad_glob_app",
 		.root	 = "src/main.c",
-		.sources = (const char *[]){ "src/missing_*.c", NULL },
+		.sources = (const char *[]){"src/missing_*.c", NULL},
 	};
 	Project proj = {
 		.name	 = "BadGlobProject",
-		.targets = (void *[]){ &exe, NULL },
+		.targets = (void *[]){&exe, NULL},
 	};
 
 	ASSERT_RESULT_ERR_CONTAINS(
@@ -199,10 +201,12 @@ TEST(Builder, build_executable_compilation_failure)
 	Project proj = {
 		.name	 = "BrokenProject",
 		.cc		 = "cc 2>/dev/null",
-		.targets = (void *[]){ &exe, NULL },
+		.targets = (void *[]){&exe, NULL},
 	};
 
-	ASSERT_RESULT_ERR_CONTAINS(build_project(&proj, td.path), "Build failed for target 'broken_app'");
+	ASSERT_RESULT_ERR_CONTAINS(
+		build_project(&proj, td.path), "Build failed for target 'broken_app'"
+	);
 }
 
 TEST(Builder, build_static_library)
@@ -216,12 +220,12 @@ TEST(Builder, build_static_library)
 		.kind	 = T_LIBRARY,
 		.name	 = "calc",
 		.type	 = STATIC,
-		.sources = (const char *[]){ "src/*.c", NULL },
+		.sources = (const char *[]){"src/*.c", NULL},
 	};
 	Project proj = {
 		.name	   = "CalcLibProj",
 		.build_dir = "build",
-		.targets   = (void *[]){ &lib, NULL },
+		.targets   = (void *[]){&lib, NULL},
 	};
 
 	Result res = build_project(&proj, td.path);
@@ -259,12 +263,12 @@ TEST(Builder, build_shared_library)
 		.kind	 = T_LIBRARY,
 		.name	 = "ops",
 		.type	 = SHARED,
-		.sources = (const char *[]){ "src/ops.c", NULL },
+		.sources = (const char *[]){"src/ops.c", NULL},
 	};
 	Project proj = {
 		.name	   = "OpsLibProj",
 		.build_dir = "build",
-		.targets   = (void *[]){ &lib, NULL },
+		.targets   = (void *[]){&lib, NULL},
 	};
 
 	Result res = build_project(&proj, td.path);
@@ -295,19 +299,19 @@ TEST(Builder, build_library_with_modules)
 
 	Module core_mod = {
 		.name	 = "core",
-		.sources = (const char *[]){ "core/*.c", NULL },
+		.sources = (const char *[]){"core/*.c", NULL},
 	};
 	Library lib = {
 		.kind	 = T_LIBRARY,
 		.name	 = "mylib",
 		.type	 = STATIC,
-		.sources = (const char *[]){ "src/api.c", NULL },
-		.mods	 = (Module *[]){ &core_mod, NULL },
+		.sources = (const char *[]){"src/api.c", NULL},
+		.mods	 = (Module *[]){&core_mod, NULL},
 	};
 	Project proj = {
 		.name	   = "ModLibProj",
 		.build_dir = "build",
-		.targets   = (void *[]){ &lib, NULL },
+		.targets   = (void *[]){&lib, NULL},
 	};
 
 	Result res = build_project(&proj, td.path);
@@ -366,10 +370,10 @@ TEST(Builder, generated_config_header_and_profiles)
 		.name	   = "ConfigApp",
 		.version   = "2.3.4",
 		.build_dir = "build",
-		.targets   = (void *[]){ &exe, NULL },
+		.targets   = (void *[]){&exe, NULL},
 	};
 
-	Result res = build_project_target(&proj, td.path, "config_bin", "staging");
+	Result res = build_target(&proj, td.path, "config_bin", "staging");
 	ASSERT_RESULT_OK(res);
 
 	// Verify header was generated on disk
@@ -385,6 +389,290 @@ TEST(Builder, generated_config_header_and_profiles)
 	char run_cmd[600];
 	snprintf(run_cmd, sizeof(run_cmd), "\"%s\"", bin_path);
 	ASSERT_EQ(system(run_cmd), 0);
+}
+
+TEST(Builder, build_executable_with_static_library_dep)
+{
+	TMPDIR_AUTO(td);
+
+	write_test_file(td.path, "core/include/core.h", "int core_calc(int);\n");
+	write_test_file(
+		td.path, "core/core.c", "#include \"core.h\"\nint core_calc(int x) { return x * 2; }\n"
+	);
+	// app includes core.h with NO own -I; it must come from core's public_includes
+	write_test_file(
+		td.path, "src/main.c",
+		"#include <core.h>\nint main(void) { return (core_calc(5) == 10) ? 0 : 1; }\n"
+	);
+
+	Library core = {
+		.kind			 = T_LIBRARY,
+		.name			 = "core",
+		.type			 = STATIC,
+		.sources		 = (const char *[]){"core/core.c", NULL},
+		.public_includes = (const char *[]){"core/include", NULL},
+	};
+	Executable app = {
+		.kind = T_EXECUTABLE,
+		.name = "dep_app",
+		.root = "src/main.c",
+		.deps = (void *[]){&core, NULL},
+	};
+	Project proj = {
+		.name	   = "DepProject",
+		.build_dir = "build",
+		.targets   = (void *[]){&app, &core, NULL},
+	};
+
+	Result res = build_project(&proj, td.path);
+	ASSERT_RESULT_OK(res);
+
+	char bin_path[512];
+	snprintf(bin_path, sizeof(bin_path), "%s/build/dep_app", td.path);
+	ASSERT_TRUE(access(bin_path, F_OK) == 0);
+	ASSERT_EQ(system(bin_path), 0);
+}
+
+TEST(Builder, build_executable_transitive_static_deps)
+{
+	TMPDIR_AUTO(td);
+
+	// libbeta exposes public header; libalpha depends on libbeta and its code
+	// includes <beta.h>; app depends on libalpha and includes <alpha.h>. The
+	// app must pick up BOTH public include dirs transitively and link both
+	// archives with alpha before beta.
+	write_test_file(td.path, "beta/include/beta.h", "int beta_val(void);\n");
+	write_test_file(
+		td.path, "beta/beta.c", "#include \"beta.h\"\nint beta_val(void) { return 40; }\n"
+	);
+	write_test_file(td.path, "alpha/include/alpha.h", "int alpha_val(void);\n");
+	write_test_file(
+		td.path, "alpha/alpha.c",
+		"#include <alpha.h>\n#include <beta.h>\nint alpha_val(void) { return beta_val() + 1; }\n"
+	);
+	write_test_file(
+		td.path, "src/main.c",
+		"#include <alpha.h>\nint main(void) { return (alpha_val() == 41) ? 0 : 1; }\n"
+	);
+
+	Library beta = {
+		.kind			 = T_LIBRARY,
+		.name			 = "beta",
+		.type			 = STATIC,
+		.sources		 = (const char *[]){"beta/beta.c", NULL},
+		.public_includes = (const char *[]){"beta/include", NULL},
+	};
+	Library alpha = {
+		.kind			 = T_LIBRARY,
+		.name			 = "alpha",
+		.type			 = STATIC,
+		.sources		 = (const char *[]){"alpha/alpha.c", NULL},
+		.public_includes = (const char *[]){"alpha/include", NULL},
+		.deps			 = (void *[]){&beta, NULL},
+	};
+	Executable app = {
+		.kind = T_EXECUTABLE,
+		.name = "chain_app",
+		.root = "src/main.c",
+		.deps = (void *[]){&alpha, NULL},
+	};
+	Project proj = {
+		.name	   = "ChainProject",
+		.build_dir = "build",
+		.targets   = (void *[]){&app, &alpha, &beta, NULL},
+	};
+
+	Result res = build_project(&proj, td.path);
+	ASSERT_RESULT_OK(res);
+
+	char bin_path[512];
+	snprintf(bin_path, sizeof(bin_path), "%s/build/chain_app", td.path);
+	ASSERT_TRUE(access(bin_path, F_OK) == 0);
+	ASSERT_EQ(system(bin_path), 0);
+}
+
+TEST(Builder, build_executable_with_shared_library_dep)
+{
+	TMPDIR_AUTO(td);
+
+	write_test_file(td.path, "m/include/m.h", "int m_double(int);\n");
+	write_test_file(td.path, "m/m.c", "#include \"m.h\"\nint m_double(int x) { return x * 2; }\n");
+	write_test_file(
+		td.path, "src/main.c",
+		"#include <m.h>\nint main(void) { return (m_double(21) == 42) ? 0 : 1; }\n"
+	);
+
+	Library math = {
+		.kind			 = T_LIBRARY,
+		.name			 = "math",
+		.type			 = SHARED,
+		.sources		 = (const char *[]){"m/m.c", NULL},
+		.public_includes = (const char *[]){"m/include", NULL},
+	};
+	Executable app = {
+		.kind = T_EXECUTABLE,
+		.name = "shared_app",
+		.root = "src/main.c",
+		.deps = (void *[]){&math, NULL},
+	};
+	Project proj = {
+		.name	   = "SharedProject",
+		.build_dir = "build",
+		.targets   = (void *[]){&app, &math, NULL},
+	};
+
+	Result res = build_project(&proj, td.path);
+	ASSERT_RESULT_OK(res);
+
+	char bin_path[512];
+	snprintf(bin_path, sizeof(bin_path), "%s/build/shared_app", td.path);
+	ASSERT_TRUE(access(bin_path, F_OK) == 0);
+	ASSERT_EQ(system(bin_path), 0);
+}
+
+TEST(Builder, circular_dependency_fails)
+{
+	TMPDIR_AUTO(td);
+
+	// Deliberately left without sources: resolution must fail before any compile.
+	Library lib_a = {.kind = T_LIBRARY, .name = "la", .type = STATIC};
+	Library lib_b = {.kind = T_LIBRARY, .name = "lb", .type = STATIC};
+	lib_b.deps = (void *[]){&lib_a, NULL};
+	lib_a.deps = (void *[]){&lib_b, NULL};
+
+	Executable app = {
+		.kind = T_EXECUTABLE,
+		.name = "cycle_app",
+	};
+	app.deps = (void *[]){&lib_a, NULL};
+
+	Project proj = {
+		.name	 = "CycleBuildProject",
+		.targets = (void *[]){&app, &lib_a, &lib_b, NULL},
+	};
+
+	ASSERT_RESULT_ERR_CONTAINS(build_project(&proj, td.path), "circular dependency detected");
+}
+
+TEST(Builder, build_selective_target_with_deps)
+{
+	TMPDIR_AUTO(td);
+
+	write_test_file(td.path, "lib1/lib1.c", "int lib1_val(void) { return 7; }\n");
+	write_test_file(td.path, "src/main1.c", "int main(void) { return 0; }\n");
+	write_test_file(td.path, "src/main2.c", "int main(void) { return 0; }\n");
+
+	Library lib1 = {
+		.kind	 = T_LIBRARY,
+		.name	 = "lib1",
+		.type	 = STATIC,
+		.sources = (const char *[]){"lib1/lib1.c", NULL},
+	};
+	Executable target1 = {
+		.kind = T_EXECUTABLE,
+		.name = "target1",
+		.root = "src/main1.c",
+		.deps = (void *[]){&lib1, NULL},
+	};
+	Executable target2 = {
+		.kind = T_EXECUTABLE,
+		.name = "target2",
+		.root = "src/main2.c",
+	};
+	Project proj = {
+		.name	   = "SelectiveProject",
+		.build_dir = "build",
+		.targets   = (void *[]){&target1, &target2, &lib1, NULL},
+	};
+
+	Result res = build_target(&proj, td.path, "target1", "debug");
+	ASSERT_RESULT_OK(res);
+
+	// target1 and its dependency lib1 are built...
+	char t1_path[512];
+	snprintf(t1_path, sizeof(t1_path), "%s/build/target1", td.path);
+	ASSERT_TRUE(access(t1_path, F_OK) == 0);
+	// lib1's name already starts with "lib", so no extra prefix is applied
+	char lib1_path[512];
+	snprintf(lib1_path, sizeof(lib1_path), "%s/build/lib1.a", td.path);
+	ASSERT_TRUE(access(lib1_path, F_OK) == 0);
+
+	// ...but unrelated target2 must NOT be built
+	char t2_path[512];
+	snprintf(t2_path, sizeof(t2_path), "%s/build/target2", td.path);
+	ASSERT_TRUE(access(t2_path, F_OK) != 0);
+}
+
+TEST(Builder, static_library_basename_collision)
+{
+	TMPDIR_AUTO(td);
+
+	// Two sources with identical basenames in different directories: the
+	// object files must not silently overwrite each other, which used to
+	// make the archive lose one of the two functions.
+	write_test_file(td.path, "liba/dup.c", "int dup_a(void) { return 11; }\n");
+	write_test_file(td.path, "libb/dup.c", "int dup_b(void) { return 31; }\n");
+	write_test_file(
+		td.path, "src/main.c",
+		"int dup_a(void);\nint dup_b(void);\n"
+		"int main(void) { return (dup_a() + dup_b() == 42) ? 0 : 1; }\n"
+	);
+
+	Library lib = {
+		.kind	 = T_LIBRARY,
+		.name	 = "collide",
+		.type	 = STATIC,
+		.sources = (const char *[]){"liba/dup.c", "libb/dup.c", NULL},
+	};
+	Executable app = {
+		.kind = T_EXECUTABLE,
+		.name = "collide_app",
+		.root = "src/main.c",
+		.deps = (void *[]){&lib, NULL},
+	};
+	Project proj = {
+		.name	   = "CollisionProject",
+		.build_dir = "build",
+		.targets   = (void *[]){&app, &lib, NULL},
+	};
+
+	Result res = build_project(&proj, td.path);
+	ASSERT_RESULT_OK(res);
+
+	char bin_path[512];
+	snprintf(bin_path, sizeof(bin_path), "%s/build/collide_app", td.path);
+	ASSERT_TRUE(access(bin_path, F_OK) == 0);
+	ASSERT_EQ(system(bin_path), 0);
+}
+
+TEST(Builder, release_profile_compiles_and_runs)
+{
+	TMPDIR_AUTO(td);
+
+	write_test_file(td.path, "src/main.c", "int main(void) { return 0; }\n");
+
+	Executable exe = {
+		.kind = T_EXECUTABLE,
+		.name = "rel_app",
+		.root = "src/main.c",
+	};
+	Project proj = {
+		.name	   = "ReleaseProject",
+		.build_dir = "build",
+		.targets   = (void *[]){&exe, NULL},
+	};
+
+	Result res = build_target(&proj, td.path, NULL, "release");
+	ASSERT_RESULT_OK(res);
+
+	char bin_path[512];
+	snprintf(bin_path, sizeof(bin_path), "%s/build/rel_app", td.path);
+	ASSERT_TRUE(access(bin_path, F_OK) == 0);
+	ASSERT_EQ(system(bin_path), 0);
+
+	// Same for debug profile
+	res = build_target(&proj, td.path, NULL, "debug");
+	ASSERT_RESULT_OK(res);
 }
 
 TEST(Builder, build_executable_with_modules)
@@ -412,28 +700,28 @@ TEST(Builder, build_executable_with_modules)
 
 	Module deep_mod = {
 		.name	  = "deep_mod",
-		.sources  = (const char *[]){ "nested/*.c", NULL },
-		.includes = (const char *[]){ "nested", NULL },
+		.sources  = (const char *[]){"nested/*.c", NULL},
+		.includes = (const char *[]){"nested", NULL},
 	};
 
 	Module calc_mod = {
 		.name	  = "calc_mod",
-		.sources  = (const char *[]){ "sub/*.c", NULL },
-		.includes = (const char *[]){ "sub", NULL },
-		.mods	  = (Module *[]){ &deep_mod, NULL },
+		.sources  = (const char *[]){"sub/*.c", NULL},
+		.includes = (const char *[]){"sub", NULL},
+		.mods	  = (Module *[]){&deep_mod, NULL},
 	};
 
 	Executable exe = {
 		.kind = T_EXECUTABLE,
 		.name = "mod_app",
 		.root = "src/main.c",
-		.mods = (Module *[]){ &calc_mod, NULL },
+		.mods = (Module *[]){&calc_mod, NULL},
 	};
 
 	Project proj = {
 		.name	   = "ModProject",
 		.build_dir = "bin",
-		.targets   = (void *[]){ &exe, NULL },
+		.targets   = (void *[]){&exe, NULL},
 	};
 
 	Result res = build_project(&proj, td.path);

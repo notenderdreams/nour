@@ -1,7 +1,0 @@
-#include "advanced/mod.nour"
-
-Module math = {
-	.sources  = { "*.c" },
-	.includes = { "." },
-	.mods     = { &advanced },
-};

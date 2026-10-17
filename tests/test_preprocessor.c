@@ -1,6 +1,101 @@
 #include "test.h"
 #include "parser.h"
+#include "arena.h"
 #include <sys/stat.h>
+
+static void write_test_file(const char *dir, const char *relpath, const char *content)
+{
+	char full[512];
+	snprintf(full, sizeof(full), "%s/%s", dir, relpath);
+
+	char *slash = strrchr(full, '/');
+	if (slash) {
+		*slash = '\0';
+		char mkdir_cmd[600];
+		snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p \"%s\"", full);
+		(void)system(mkdir_cmd);
+		*slash = '/';
+	}
+
+	FILE *f = fopen(full, "w");
+	if (!f)
+		abort();
+	defer(fclose, f);
+	fputs(content, f);
+}
+
+TEST(Preprocessor, root_rewritten_in_included_manifest)
+{
+	TMPDIR_AUTO(td);
+
+	// A manifest included from a subdirectory: its scalar `.root` must be
+	// rewritten to stay relative to the top-level project, exactly like
+	// .sources/.includes arrays already are.
+	write_test_file(td.path, "sub/mod.nour", "Executable app = {\n    .root = \"main.c\",\n};\n");
+	write_test_file(
+		td.path, "project.nour", "#include \"sub/mod.nour\"\nProject P = { .targets = { &app } };\n"
+	);
+
+	arena_scratch(a, 4096);
+	const char *in_path = rnstr_sprintf(&a, "%s/project.nour", td.path);
+	const char *out_path = rnstr_sprintf(&a, "%s/out.c", td.path);
+
+	ASSERT_RESULT_OK(preprocess(in_path, out_path));
+
+	char content[8192] = {0};
+	FILE *f = fopen(out_path, "r");
+	ASSERT_NOT_NULL(f);
+	defer(fclose, f);
+	usize n = fread(content, 1, sizeof(content) - 1, f);
+	content[n] = '\0';
+
+	ASSERT_STR_CONTAINS(content, ".root = \"sub/main.c\",");
+}
+
+TEST(Preprocessor, invalid_declaration_name_rejected)
+{
+	char *out __attribute__((cleanup(tf_free_str))) = NULL;
+
+	Result res = preprocess_str(
+		"Executable my-app = {\n"
+		"    .root = \"src/main.c\",\n"
+		"};\n"
+		"Project BadName = { .targets = { &app } };\n",
+		&out
+	);
+	ASSERT_FALSE(res.ok);
+	ASSERT_TRUE(res.error != NULL);
+	ASSERT_STR_CONTAINS(res.error, "invalid declaration name 'my-app'");
+	result_free(&res);
+}
+
+TEST(Preprocessor, long_lines_not_truncated)
+{
+	// A path-array line far beyond the old 1024-byte fgets buffer must be
+	// processed whole instead of being split mid-string-literal.
+	char input[16384];
+	usize used = 0;
+	used += (usize)snprintf(
+		input + used, sizeof(input) - used, "Executable app = {\n    .sources = { "
+	);
+	for (int i = 0; i < 60; ++i) {
+		used += (usize)snprintf(
+			input + used, sizeof(input) - used, "\"very/long/path/segment%02d/file.c\", ", i
+		);
+	}
+	ASSERT_TRUE(
+		snprintf(
+			input + used, sizeof(input) - used,
+			"NULL },\n};\nProject LongLine = { .targets = { &app } };\n"
+		) >= 0
+	);
+
+	char *out __attribute__((cleanup(tf_free_str))) = NULL;
+	ASSERT_RESULT_OK(preprocess_str(input, &out));
+	ASSERT_NOT_NULL(out);
+	ASSERT_STR_CONTAINS(out, "segment59/file.c");
+	ASSERT_STR_CONTAINS(out, "NULL }");
+}
 
 TEST(Preprocessor, simple_executable)
 {
@@ -314,7 +409,9 @@ TEST(Preprocessor, include_nested_modules)
 	ASSERT_TRUE(
 		strstr(buf, "// ─────────────────── core/sub/deep/mod.nour ───────────────────") != NULL
 	);
-	ASSERT_TRUE(strstr(buf, "// ─────────────────── core/sub/mod.nour ───────────────────") != NULL);
+	ASSERT_TRUE(
+		strstr(buf, "// ─────────────────── core/sub/mod.nour ───────────────────") != NULL
+	);
 	ASSERT_TRUE(strstr(buf, "// ─────────────────── core/mod.nour ───────────────────") != NULL);
 	ASSERT_TRUE(strstr(buf, "// ─────────────────── project.nour ───────────────────") != NULL);
 	ASSERT_TRUE(strstr(buf, "// ─────────────────── Entrypoint ───────────────────") != NULL);

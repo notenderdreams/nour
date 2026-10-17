@@ -4,6 +4,55 @@
 #include <stdint.h>
 #include <string.h>
 
+TEST(Arena, rnstr_survives_interleaved_allocs)
+{
+	// Regression: an arena allocation while an incremental string is open
+	// used to corrupt the string (block-switch stranded the string start).
+	arena_scratch(a, 64);
+
+	strbuf_open(&a);
+	strbuf_append(&a, "AA");
+	rnstr_sprintf(&a, "%s", "BLOCKPUSHER"); // plain alloc while string open
+	arena_alloc(&a, 200); // forces a new block
+	strbuf_append(&a, "C");
+	ASSERT_STR_EQ(strbuf_finish(&a), "AAC");
+}
+
+TEST(Arena, rnstr_growth_with_interleaves_and_wraparound)
+{
+	// Long content that forces the internal buffer to grow several times,
+	// interleaved with more plain allocations, plus a very long single printf.
+	arena_scratch(a, 32);
+
+	strbuf_open(&a);
+	for (int i = 0; i < 10; ++i) {
+		strbuf_printf(&a, "entry_%d;", i);
+		arena_alloc(&a, 1024); // interleaved allocs, force growth
+	}
+	strbuf_printf(&a, "tail=%d", 42);
+
+	const char *s = strbuf_finish(&a);
+	ASSERT_STR_EQ(
+		s, "entry_0;entry_1;entry_2;entry_3;entry_4;entry_5;entry_6;entry_7;entry_8;entry_9;tail=42"
+	);
+}
+
+TEST(Arena, strbuf_printf_no_length_blowup)
+{
+	// A single printf larger than two whole arena blocks must still produce
+	// the exact string.
+	arena_scratch(a, 128);
+	strbuf_open(&a);
+	char pad[3000];
+	memset(pad, 'x', sizeof(pad) - 1);
+	pad[sizeof(pad) - 1] = '\0';
+	strbuf_printf(&a, "head/%s/tail", pad);
+
+	char expected[3100];
+	snprintf(expected, sizeof(expected), "head/%s/tail", pad);
+	ASSERT_STR_EQ(strbuf_finish(&a), expected);
+}
+
 TEST(Arena, basic_and_alignment)
 {
 	Arena a = arena_new(1024);
@@ -15,7 +64,7 @@ TEST(Arena, basic_and_alignment)
 	ASSERT_EQ((uintptr_t)p1 % ARENA_DEFAULT_ALIGNMENT, 0);
 
 	// Explicit power-of-two alignments: 1, 2, 4, 8, 16, 32, 64, 128
-	usize alignments[] = { 1, 2, 4, 8, 16, 32, 64, 128 };
+	usize alignments[] = {1, 2, 4, 8, 16, 32, 64, 128};
 	for (usize i = 0; i < sizeof(alignments) / sizeof(alignments[0]); ++i) {
 		usize align = alignments[i];
 		void *p = arena_alloc_align(&a, 3, align);
@@ -81,22 +130,22 @@ TEST(Arena, rnstr_building)
 {
 	Arena a = arena_new(32); // Small capacity to force block growth
 
-	rnstr_begin(&a);
-	rnstr_append(&a, "cc -o ");
-	rnstr_appendsv(&a, SV("app"));
-	rnstr_putc(&a, ' ');
-	rnstr_printf(&a, "-I%s -D%s=%d", "include", "DEBUG", 1);
+	strbuf_open(&a);
+	strbuf_append(&a, "cc -o ");
+	strbuf_appendsv(&a, SV("app"));
+	strbuf_putc(&a, ' ');
+	strbuf_printf(&a, "-I%s -D%s=%d", "include", "DEBUG", 1);
 	for (int i = 0; i < 3; ++i) {
-		rnstr_printf(&a, " src%d.c", i);
+		strbuf_printf(&a, " src%d.c", i);
 	}
-	const char *cmd = rnstr_finish(&a);
+	const char *cmd = strbuf_finish(&a);
 
 	ASSERT_STR_EQ(cmd, "cc -o app -Iinclude -DDEBUG=1 src0.c src1.c src2.c");
 
 	// Test subsequent rnstr build
-	rnstr_begin(&a);
-	rnstr_printf(&a, "next: %d", 999);
-	const char *next_cmd = rnstr_finish(&a);
+	strbuf_open(&a);
+	strbuf_printf(&a, "next: %d", 999);
+	const char *next_cmd = strbuf_finish(&a);
 	ASSERT_STR_EQ(next_cmd, "next: 999");
 
 	arena_destroy(&a);

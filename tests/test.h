@@ -66,11 +66,11 @@ typedef struct TestEntry {
 } TestEntry;
 
 #ifdef TEST_MAIN
-TestContext	 g_test_ctx			   = { 0 };
-SuiteContext g_suite			   = { 0 };
+TestContext	 g_test_ctx			   = {0};
+SuiteContext g_suite			   = {0};
 bool		 g_cur_test_failed	   = false;
-char		 g_cur_test_error[256] = { 0 };
-char		 g_cur_test_file[128]  = { 0 };
+char		 g_cur_test_error[256] = {0};
+char		 g_cur_test_file[128]  = {0};
 i32			 g_cur_test_line	   = 0;
 bool		 g_color			   = true;
 TestEntry	*g_test_registry	   = NULL;
@@ -178,8 +178,8 @@ static inline void suite_end(void)
 	f64 suite_ms = (f64)(tf_time_ns() - g_suite.start_ns) / 1000000.0;
 	bool all_passed = (g_suite.passed_count == g_suite.count);
 
-	const char *icon = all_passed ? (ANSI_BOLD ANSI_GREEN "✓" ANSI_RESET) :
-									(ANSI_BOLD ANSI_RED "✗" ANSI_RESET);
+	const char *icon =
+		all_passed ? (ANSI_BOLD ANSI_GREEN "✓" ANSI_RESET) : (ANSI_BOLD ANSI_RED "✗" ANSI_RESET);
 	char title[64];
 	snprintf(title, sizeof(title), "%s %d/%d", g_suite.name, g_suite.passed_count, g_suite.count);
 
@@ -418,7 +418,7 @@ static inline void tf_free_str(char **p)
 		char *_out __attribute__((cleanup(tf_free_str))) = NULL; \
 		ASSERT_RESULT_OK(preprocess_str((input_code), &_out));   \
 		ASSERT_NOT_NULL(_out);                                   \
-		const char *_needles[] = { __VA_ARGS__, NULL };          \
+		const char *_needles[] = {__VA_ARGS__, NULL};            \
 		for (i32 _i = 0; _needles[_i]; ++_i) {                   \
 			ASSERT_STR_CONTAINS(_out, _needles[_i]);             \
 		}                                                        \
@@ -469,12 +469,12 @@ static inline void tmpdir_drop(TmpDir *t)
 	}
 }
 
-#define TMPDIR_AUTO(n)                                          \
-	TmpDir n __attribute__((cleanup(tmpdir_drop))) = { { 0 } }; \
+#define TMPDIR_AUTO(n)                                      \
+	TmpDir n __attribute__((cleanup(tmpdir_drop))) = {{0}}; \
 	test_tmpdir_make(n.path, sizeof(n.path))
 
-void loader_close(void);
-#define LOADER_AUTO defer(loader_close)
+void unload_manifest(void);
+#define LOADER_AUTO defer(unload_manifest)
 
 #define TEST_SILENT(...)                          \
 	do {                                          \
@@ -559,8 +559,8 @@ static inline void tf_run_suite_tests(const char *suite_name, const char *filter
 
 static inline void tf_run_registered(const char *filter)
 {
-	static const char *ordered_suites[] = { "Preprocessor", "Loader", "Builder", NULL };
-	const char *ran_suites[64] = { 0 };
+	static const char *ordered_suites[] = {"Preprocessor", "Loader", "Builder", NULL};
+	const char *ran_suites[64] = {0};
 	i32 num_ran = 0;
 
 	for (i32 i = 0; ordered_suites[i]; ++i) {

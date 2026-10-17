@@ -18,7 +18,7 @@ bool sv_eq(StrView a, StrView b)
 	return memcmp(a.data, b.data, a.len) == 0;
 }
 
-bool sv_eqc(StrView sv, const char *cstr)
+bool sv_eq_cstr(StrView sv, const char *cstr)
 {
 	if (!cstr)
 		return sv.len == 0;
@@ -57,7 +57,7 @@ bool sv_contains(StrView sv, StrView needle)
 	return false;
 }
 
-bool sv_containsc(StrView sv, const char *cstr)
+bool sv_contains_cstr(StrView sv, const char *cstr)
 {
 	return sv_contains(sv, sv_fromc(cstr));
 }
@@ -97,12 +97,12 @@ StrView sv_trim(StrView sv)
 StrView sv_sub(StrView sv, usize start, usize len)
 {
 	if (start >= sv.len) {
-		return (StrView){ .data = sv.data + sv.len, .len = 0 };
+		return (StrView){.data = sv.data + sv.len, .len = 0};
 	}
 	if (len > sv.len - start) {
 		len = sv.len - start;
 	}
-	return (StrView){ .data = sv.data + start, .len = len };
+	return (StrView){.data = sv.data + start, .len = len};
 }
 
 bool sv_split(StrView sv, char delimiter, StrView *left, StrView *right)
@@ -123,7 +123,7 @@ bool sv_split(StrView sv, char delimiter, StrView *left, StrView *right)
 	if (left)
 		*left = sv;
 	if (right)
-		*right = (StrView){ .data = sv.data + sv.len, .len = 0 };
+		*right = (StrView){.data = sv.data + sv.len, .len = 0};
 	return false;
 }
 

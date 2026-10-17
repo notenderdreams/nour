@@ -61,3 +61,29 @@ void sanitize_macro_name(const char *src, char *dst, usize cap)
 	}
 	dst[i] = '\0';
 }
+
+const char *sh_quote(Arena *a, const char *s)
+{
+	if (!s)
+		s = "";
+	usize n = strlen(s);
+
+	// Worst case: every byte is a quote, each expanded to '\'' (4 bytes).
+	char *out = arena_alloc_align(a, n * 4 + 4, 1);
+	if (!out)
+		return "''";
+
+	char *p = out;
+	*p++	= '\'';
+	for (usize i = 0; i < n; ++i) {
+		if (s[i] == '\'') {
+			memcpy(p, "'\\''", 4);
+			p += 4;
+		} else {
+			*p++ = s[i];
+		}
+	}
+	*p++ = '\'';
+	*p	 = '\0';
+	return out;
+}

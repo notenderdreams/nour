@@ -11,18 +11,18 @@ typedef struct StrView {
 	usize		len;
 } StrView;
 
-#define SV(lit) ((StrView){ .data = "" lit, .len = sizeof(lit) - 1 })
+#define SV(lit) ((StrView){.data = "" lit, .len = sizeof(lit) - 1})
 
 static inline StrView sv_new(const char *data, usize len)
 {
-	return (StrView){ .data = data, .len = len };
+	return (StrView){.data = data, .len = len};
 }
 
 static inline StrView sv_fromc(const char *s)
 {
 	if (!s)
-		return (StrView){ .data = NULL, .len = 0 };
-	return (StrView){ .data = s, .len = strlen(s) };
+		return (StrView){.data = NULL, .len = 0};
+	return (StrView){.data = s, .len = strlen(s)};
 }
 
 static inline bool sv_empty(StrView sv)
@@ -31,12 +31,12 @@ static inline bool sv_empty(StrView sv)
 }
 
 bool sv_eq(StrView a, StrView b);
-bool sv_eqc(StrView sv, const char *cstr);
+bool sv_eq_cstr(StrView sv, const char *cstr);
 
 bool sv_starts(StrView sv, StrView prefix);
 bool sv_ends(StrView sv, StrView suffix);
 bool sv_contains(StrView sv, StrView needle);
-bool sv_containsc(StrView sv, const char *cstr);
+bool sv_contains_cstr(StrView sv, const char *cstr);
 i32	 sv_cmp(StrView a, StrView b);
 
 StrView sv_trim(StrView sv);

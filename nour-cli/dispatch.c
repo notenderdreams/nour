@@ -12,7 +12,7 @@
 static Flag *flag_find_sv(Flag *flags, StrView name)
 {
 	for (i32 i = 0; flags && flags[i].name; ++i) {
-		if (sv_eqc(name, flags[i].name))
+		if (sv_eq_cstr(name, flags[i].name))
 			return &flags[i];
 	}
 	return NULL;
@@ -317,7 +317,8 @@ parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx, bool *
 
 			if (f->type == FLAG_BOOL) {
 				if (has_eq) {
-					f->val.b = (sv_eqc(inline_val_sv, "true") || sv_eqc(inline_val_sv, "1"));
+					f->val.b =
+						(sv_eq_cstr(inline_val_sv, "true") || sv_eq_cstr(inline_val_sv, "1"));
 				} else {
 					f->val.b = true;
 				}
@@ -462,7 +463,7 @@ i32 dispatch(CLI *cli, i32 argc, char **argv)
 		return 0;
 	}
 
-	Context ctx = { .cmd = cmd, .cli = cli };
+	Context ctx = {.cmd = cmd, .cli = cli};
 	bool	show_help = false;
 	Result	res = parse_flags(cmd, argc, argv, arg_start, &ctx, &show_help);
 	defer(result_free, &res);

@@ -23,8 +23,14 @@ typedef struct Arena {
 	ArenaBlock *first;
 	ArenaBlock *current;
 	usize		default_block_cap;
-	usize		str_start;
-	bool		in_str;
+	/* Incremental string state (rnstr_*). The working buffer is heap-owned
+	 * by the arena and copied into arena storage on strbuf_finish. Keeping
+	 * it separate from the block chain makes string building safe against
+	 * interleaved arena_alloc calls. */
+	char *str_buf;
+	usize str_len;
+	usize str_cap;
+	bool  in_str;
 } Arena;
 
 // Lifecycle
@@ -44,12 +50,12 @@ PRINTF_FMT(2, 0) char *rnstr_vsprintf(Arena *a, const char *fmt, va_list ap);
 char *rnstr_path(Arena *a, ...) __attribute__((sentinel));
 
 // Incremental String Building (rnstr_*)
-void rnstr_begin(Arena *a);
-void rnstr_append(Arena *a, const char *s);
-void rnstr_appendsv(Arena *a, StrView sv);
-void rnstr_putc(Arena *a, char c);
-PRINTF_FMT(2, 3) void rnstr_printf(Arena *a, const char *fmt, ...);
-const char *rnstr_finish(Arena *a);
+void strbuf_open(Arena *a);
+void strbuf_append(Arena *a, const char *s);
+void strbuf_appendsv(Arena *a, StrView sv);
+void strbuf_putc(Arena *a, char c);
+PRINTF_FMT(2, 3) void strbuf_printf(Arena *a, const char *fmt, ...);
+const char *strbuf_finish(Arena *a);
 
 // Scoped scratch arena: arena_scratch(name) or arena_scratch(name, cap)
 static inline void arena_cleanup(Arena *a)

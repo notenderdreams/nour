@@ -2,8 +2,8 @@
 
 #include "types.h"
 
-Result compile_nour(const char *src, const char *dest);
+Result compile_manifest(const char *src, const char *dest);
 
-Result load_project(const char *path);
+Result load_manifest(const char *path);
 
-void loader_close(void);
+void unload_manifest(void);

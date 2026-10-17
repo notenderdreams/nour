@@ -50,6 +50,12 @@ typedef enum {
 	ERR_DIR_EXISTS,
 	ERR_FILE_EXISTS,
 	ERR_GETCWD,
+	ERR_CIRCULAR_DEP,
+	ERR_INVALID_DEP,
+	ERR_INVALID_DECL,
+	ERR_DUPLICATE_TARGET,
+	ERR_DEP_DEPTH,
+	ERR_AMBIGUOUS_EXEC,
 	ERR_MAX,
 } ErrorCode;
 
@@ -101,6 +107,12 @@ __attribute__((unused)) static const char *const messages[] = {
 	[ERR_DIR_EXISTS] = "directory '%s' already exists",
 	[ERR_FILE_EXISTS] = "'%s' already exists in current directory",
 	[ERR_GETCWD] = "failed to get current working directory",
+	[ERR_CIRCULAR_DEP] = "circular dependency detected: %s",
+	[ERR_INVALID_DEP] = "target '%s' has invalid dependency '%s'",
+	[ERR_INVALID_DECL] = "invalid declaration name '%s': must be a valid C identifier",
+	[ERR_DUPLICATE_TARGET] = "duplicate target name '%s'",
+	[ERR_DEP_DEPTH] = "dependency depth limit exceeded (max %d) at target '%s'",
+	[ERR_AMBIGUOUS_EXEC] = "multiple executable targets in project '%s'; specify one with --target",
 };
 
 #define error_messages messages

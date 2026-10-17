@@ -24,7 +24,7 @@ test_flags := "-fsanitize=address,undefined -DFIXTURES_DIR='\"tests/fixtures\"'"
 
 test: build
 	mkdir -p bin
-	{{cc}} {{cflags}} {{test_flags}} -Inour-core -Itests -D_DARWIN_C_SOURCE=1 nour-core/arena.c nour-core/str.c nour-core/parser.c nour-core/loader.c nour-core/utils.c nour-core/builder.c nour-core/fs.c tests/*.c -o bin/nour_test {{ldflags}}
+	{{cc}} {{cflags}} {{test_flags}} -Inour-core -Itests -D_DARWIN_C_SOURCE=1 nour-core/arena.c nour-core/str.c nour-core/parser.c nour-core/loader.c nour-core/utils.c nour-core/builder.c nour-core/fs.c nour-core/deps.c tests/*.c -o bin/nour_test {{ldflags}}
 	./bin/nour_test
 
 test-cli: build
@@ -34,7 +34,7 @@ test-all: test test-cli
 
 test-bless: build
 	mkdir -p bin
-	{{cc}} {{cflags}} {{test_flags}} -Inour-core -Itests -D_DARWIN_C_SOURCE=1 nour-core/arena.c nour-core/str.c nour-core/parser.c nour-core/loader.c nour-core/utils.c nour-core/builder.c nour-core/fs.c tests/*.c -o bin/nour_test {{ldflags}}
+	{{cc}} {{cflags}} {{test_flags}} -Inour-core -Itests -D_DARWIN_C_SOURCE=1 nour-core/arena.c nour-core/str.c nour-core/parser.c nour-core/loader.c nour-core/utils.c nour-core/builder.c nour-core/fs.c nour-core/deps.c tests/*.c -o bin/nour_test {{ldflags}}
 	NOUR_TEST_BLESS=1 ./bin/nour_test
 
 clean:

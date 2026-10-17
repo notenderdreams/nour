@@ -1,5 +1,6 @@
 #include "fs.h"
 #include "arena.h"
+#include "utils.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -27,7 +28,7 @@ Result fs_create_dir(const char *path)
 		return Ok(NULL);
 
 	arena_scratch(a, 256);
-	const char *cmd = rnstr_sprintf(&a, "mkdir -p \"%s\"", path);
+	const char *cmd = rnstr_sprintf(&a, "mkdir -p %s", sh_quote(&a, path));
 	i32 ret = system(cmd);
 
 	if (ret != 0) {
@@ -36,7 +37,7 @@ Result fs_create_dir(const char *path)
 	return Ok(NULL);
 }
 
-Result fs_create_file(const char *path, const char *content)
+Result fs_write_file(const char *path, const char *content)
 {
 	FILE *f = fopen(path, "w");
 	if (!f) {
@@ -56,7 +57,7 @@ Result fs_remove_dir(const char *path)
 		return Ok(NULL);
 
 	arena_scratch(a, 256);
-	const char *cmd = rnstr_sprintf(&a, "rm -rf \"%s\"", path);
+	const char *cmd = rnstr_sprintf(&a, "rm -rf %s", sh_quote(&a, path));
 	i32 ret = system(cmd);
 
 	if (ret != 0) {

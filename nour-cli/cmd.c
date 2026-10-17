@@ -16,18 +16,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
-#define BUILD_FLAGS                                                                              \
-	{                                                                                            \
-		{ "dir", 'C', FLAG_STR, .val.s = ".", "project directory", "<path>" },                   \
-		{ "target", 't', FLAG_STR, .val.s = "", "specific build target", "<name>" },             \
-		{ "profile", 'p', FLAG_STR, .val.s = "", "build profile (e.g. debug, release, staging)", \
-		  "<name>" },                                                                            \
-		{ "release", 'r', FLAG_BOOL, .val.b = false, "shorthand for --profile release" },        \
-		FLAG_END,                                                                                \
+#define BUILD_FLAGS                                                                             \
+	{                                                                                           \
+		{"dir", 'C', FLAG_STR, .val.s = ".", "project directory", "<path>"},                    \
+		{"target", 't', FLAG_STR, .val.s = "", "specific build target", "<name>"},              \
+		{"profile", 'p', FLAG_STR, .val.s = "", "build profile (e.g. debug, release, staging)", \
+		 "<name>"},                                                                             \
+		{"release", 'r', FLAG_BOOL, .val.b = false, "shorthand for --profile release"},         \
+		FLAG_END,                                                                               \
 	}
 
 Command new_cmd = {
@@ -67,9 +68,9 @@ Command clean_cmd = {
 	.usage	= "Remove build artifacts and build directory",
 	.action = cmd_clean,
 	.flags	= {
-		{ "dir", 'C', FLAG_STR, .val.s = ".", "project directory", "<path>" },
-		FLAG_END,
-	},
+		 {"dir", 'C', FLAG_STR, .val.s = ".", "project directory", "<path>"},
+		 FLAG_END,
+	 },
 };
 
 static Result scaffold_project(const char *name, const char *base_dir)
@@ -85,14 +86,14 @@ static Result scaffold_project(const char *name, const char *base_dir)
 	ui_created(src_dir);
 
 	const char *manifest = rnstr_sprintf(&a, MANIFEST_TEMPLATE, name, name, name);
-	Try(fs_create_file(nour_file, manifest));
+	Try(fs_write_file(nour_file, manifest));
 	ui_created(nour_file);
 
 	const char *main_src = rnstr_sprintf(&a, MAIN_TEMPLATE, name);
-	Try(fs_create_file(main_file, main_src));
+	Try(fs_write_file(main_file, main_src));
 	ui_created(main_file);
 
-	Try(fs_create_file(gitignore_file, GITIGNORE_TEMPLATE));
+	Try(fs_write_file(gitignore_file, GITIGNORE_TEMPLATE));
 	ui_created(gitignore_file);
 
 	return Ok(NULL);
@@ -187,15 +188,68 @@ static Result execute_project_build(
 	Try(fs_create_dir(dot_nour_dir));
 
 	f64 t0 = time_ms();
-	Try(preprocess(nour_path, c_path));
+
+	// Preprocess to a scratch file and only replace the manifest .c when its
+	// content actually changed; likewise, skip recompiling the shared object
+	// when it is newer than the manifest source. This keeps the dlopen cache
+	// warm so repeated commands don't pay the compile+link tax every time.
+	const char *tmp_c_path = rnstr_sprintf(&a, "%s.tmp", c_path);
+	Try(preprocess(nour_path, tmp_c_path));
+
+	bool c_changed = true;
+	{
+		char buf_a[4096], buf_b[4096];
+		FILE *fa = fopen(c_path, "rb");
+		FILE *fb = fopen(tmp_c_path, "rb");
+		if (fa) {
+			defer(fclose, fa);
+			if (fb) {
+				defer(fclose, fb);
+				bool equal = true;
+				for (;;) {
+					usize na = fread(buf_a, 1, sizeof(buf_a), fa);
+					usize nb = fread(buf_b, 1, sizeof(buf_b), fb);
+					if (na != nb || memcmp(buf_a, buf_b, na) != 0) {
+						equal = (na == 0 && nb == 0);
+						break;
+					}
+					if (na == 0) {
+						break;
+					}
+				}
+				c_changed = !equal;
+			}
+		}
+	}
+
+	if (c_changed) {
+		if (rename(tmp_c_path, c_path) != 0) {
+			return Err("failed to update manifest '%s'", c_path);
+		}
+	} else {
+		remove(tmp_c_path);
+	}
 	f64 pre_ms = time_ms() - t0;
 
+	bool needs_compile = c_changed || !fs_file_exists(so_path);
+	if (!needs_compile) {
+		struct stat st_c, st_so;
+		if (stat(so_path, &st_so) == 0 && stat(c_path, &st_c) == 0 &&
+			st_so.st_mtime >= st_c.st_mtime) {
+			needs_compile = false;
+		} else {
+			needs_compile = true;
+		}
+	}
+
 	t0 = time_ms();
-	Try(compile_nour(c_path, so_path));
+	if (needs_compile) {
+		Try(compile_manifest(c_path, so_path));
+	}
 	f64 comp_ms = time_ms() - t0;
 
-	Project *proj = Unwrap(load_project(so_path));
-	defer(loader_close);
+	Project *proj = Unwrap(load_manifest(so_path));
+	defer(unload_manifest);
 
 	Target *matched_target = NULL;
 	if (target_name && target_name[0]) {
@@ -225,7 +279,7 @@ static Result execute_project_build(
 	ui_tree_step(false, "load manifest [libnour.so]", comp_ms);
 
 	t0 = time_ms();
-	Result res = build_project_target(proj, project_dir, target_name, profile);
+	Result res = build_target(proj, project_dir, target_name, profile);
 	f64 build_ms = time_ms() - t0;
 
 	if (!res.ok) {
@@ -256,12 +310,16 @@ static Result execute_project_build(
 		if (matched_target) {
 			resolved_target = matched_target->name;
 		} else if (proj->targets) {
+			usize exec_count = 0;
 			for (void **t = proj->targets; *t; ++t) {
 				Target *tgt = (Target *)*t;
 				if (tgt->kind == T_EXECUTABLE) {
+					exec_count++;
 					resolved_target = tgt->name;
-					break;
 				}
+			}
+			if (exec_count > 1) {
+				return Err(ERR_AMBIGUOUS_EXEC, proj->name);
 			}
 		}
 
@@ -298,7 +356,7 @@ Result cmd_run(Context *ctx)
 		project_dir = ctx->args[0];
 	}
 
-	char bin_path[PATH_MAX] = { 0 };
+	char bin_path[PATH_MAX] = {0};
 	Try(execute_project_build(project_dir, target_name, profile, bin_path, sizeof(bin_path)));
 
 	if (!bin_path[0]) {
@@ -306,22 +364,22 @@ Result cmd_run(Context *ctx)
 	}
 
 	arena_scratch(a, 2048);
-	rnstr_begin(&a);
-	rnstr_printf(&a, "\"%s\"", bin_path);
+	strbuf_open(&a);
+	strbuf_printf(&a, "\"%s\"", bin_path);
 
 	for (u32 i = 0; i < ctx->n_forwarded; ++i) {
 		const char *arg = ctx->forwarded_args[i];
-		rnstr_append(&a, " \"");
+		strbuf_append(&a, " \"");
 		for (const char *p = arg; *p; ++p) {
 			if (*p == '"' || *p == '\\' || *p == '$' || *p == '`') {
-				rnstr_putc(&a, '\\');
+				strbuf_putc(&a, '\\');
 			}
-			rnstr_putc(&a, *p);
+			strbuf_putc(&a, *p);
 		}
-		rnstr_putc(&a, '"');
+		strbuf_putc(&a, '"');
 	}
 
-	const char *cmd_line = rnstr_finish(&a);
+	const char *cmd_line = strbuf_finish(&a);
 	ui_running(cmd_line);
 	i32 ret = system(cmd_line);
 
@@ -331,6 +389,27 @@ Result cmd_run(Context *ctx)
 	}
 
 	return Ok(NULL);
+}
+
+// Refuse paths that could escape the project directory during clean.
+static bool is_safe_rel_path(const char *rel)
+{
+	if (!rel || !rel[0] || rel[0] == '/')
+		return false;
+	if (strcmp(rel, ".") == 0)
+		return false;
+
+	const char *p = rel;
+	while (*p) {
+		const char *e = strchr(p, '/');
+		usize clen = e ? (usize)(e - p) : strlen(p);
+		if (clen == 0 && e)
+			return false; // '//' — suspicious
+		if (clen == 2 && p[0] == '.' && p[1] == '.')
+			return false; // parent traversal
+		p = e ? e + 1 : p + clen;
+	}
+	return true;
 }
 
 Result cmd_clean(Context *ctx)
@@ -350,6 +429,11 @@ Result cmd_clean(Context *ctx)
 			StrView trimmed = sv_trim(sv_fromc(entry));
 			if (sv_empty(trimmed))
 				continue;
+
+			char *rel = rnstr_sprintf(&a, "%.*s", (int)trimmed.len, trimmed.data);
+			if (!is_safe_rel_path(rel)) {
+				return Err("refusing to remove unsafe path '%s' listed in clean.txt", rel);
+			}
 
 			const char *tpath =
 				rnstr_sprintf(&a, "%s/%.*s", project_dir, (int)trimmed.len, trimmed.data);

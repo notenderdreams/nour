@@ -69,7 +69,7 @@ static const Theme plain_theme = {
 	.corner		  = "`--",
 };
 
-Theme		th			= { 0 };
+Theme		th			= {0};
 static bool s_has_color = false;
 
 void theme_init(void)

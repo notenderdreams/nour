@@ -1,6 +1,7 @@
 #include "loader.h"
 #include "nour.h"
 #include "arena.h"
+#include "utils.h"
 
 #include <dlfcn.h>
 #include <limits.h>
@@ -11,10 +12,11 @@ static void *g_loader_handle = NULL;
 
 typedef Project *(*NourGetProjectFn)(void);
 
-Result compile_nour(const char *src, const char *dest)
+Result compile_manifest(const char *src, const char *dest)
 {
 	arena_scratch(a, 512);
-	const char *cmd = rnstr_sprintf(&a, "cc -shared -fPIC \"%s\" -o \"%s\"", src, dest);
+	const char *cmd =
+		rnstr_sprintf(&a, "cc -shared -fPIC %s -o %s", sh_quote(&a, src), sh_quote(&a, dest));
 
 	i32 ret = system(cmd);
 	if (ret) {
@@ -23,9 +25,9 @@ Result compile_nour(const char *src, const char *dest)
 	return Ok(NULL);
 }
 
-Result load_project(const char *path)
+Result load_manifest(const char *path)
 {
-	loader_close();
+	unload_manifest();
 	g_loader_handle = dlopen(path, RTLD_NOW);
 	if (!g_loader_handle) {
 		return Err(ERR_DLOPEN, dlerror());
@@ -34,20 +36,20 @@ Result load_project(const char *path)
 	NourGetProjectFn get_project = (NourGetProjectFn)dlsym(g_loader_handle, "nour_get_project");
 	if (!get_project) {
 		Result r = Err(ERR_DLSYM, dlerror());
-		loader_close();
+		unload_manifest();
 		return r;
 	}
 
 	Project *project = get_project();
 	if (!project) {
-		loader_close();
+		unload_manifest();
 		return Err(ERR_NULL_PROJECT);
 	}
 
 	return Ok(project);
 }
 
-void loader_close(void)
+void unload_manifest(void)
 {
 	if (g_loader_handle) {
 		dlclose(g_loader_handle);

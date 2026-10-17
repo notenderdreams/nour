@@ -5,7 +5,7 @@
 #define DISPATCH_MAX_FLAGS	  32
 #define MAX_ARGS			  64
 
-#define FLAG_END { .name = NULL }
+#define FLAG_END {.name = NULL}
 #define CMD_END	 NULL
 #define NO_SHORT '\0'
 

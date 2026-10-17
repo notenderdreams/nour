@@ -1,12 +1,35 @@
-#include "math/mod.nour"
+// geolib: a leaf static library with public headers to expose.
+Library geolib = {
+	.type            = STATIC,
+	.sources         = { "geometry/*.c" },
+	.public_includes = { "geometry" },
+};
+
+// mathlib: static library that *depends* on geolib. Note the only include
+// listed here is "math" — "geometry" arrives transitively through .deps.
+Library mathlib = {
+	.type            = STATIC,
+	.sources         = { "math/*.c", "math/advanced/*.c" },
+	.public_includes = { "math", "math/advanced" },
+	.public_defines  = { "MATH_LIB=1" },
+	.deps            = { &geolib },
+};
+
+// nstr_util: shared library — linked with -L/-l plus an $ORIGIN rpath so
+// the binary runs from anywhere without LD_LIBRARY_PATH.
+Library nstr_util = {
+	.type            = SHARED,
+	.sources         = { "strutil/*.c" },
+	.public_includes = { "strutil" },
+};
 
 Executable sandbox_app = {
 	.root   = "src/main.c",
-	.mods   = { &math },
+	.deps   = { &mathlib, &nstr_util },
 	.cflags = { "-Wall", "-Wextra" },
 };
 
 Project SandboxProject = {
 	.version = "0.1.0",
-	.targets = { &sandbox_app },
+	.targets = { &geolib, &mathlib, &nstr_util, &sandbox_app },
 };

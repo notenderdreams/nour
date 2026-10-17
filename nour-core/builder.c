@@ -1,5 +1,6 @@
 #include "builder.h"
 #include "arena.h"
+#include "deps.h"
 #include "fs.h"
 #include "templates.h"
 #include "utils.h"
@@ -66,7 +67,7 @@ Result generate_config_header(
 		}
 	}
 
-	return fs_create_file(header_path, content);
+	return fs_write_file(header_path, content);
 }
 
 static const char *resolve_executable_root(const Executable *exe, const char *project_dir)
@@ -99,7 +100,7 @@ collect_module_includes(Arena *a, const Module *mod, const char *project_dir, us
 
 	if (mod->includes) {
 		for (const char **inc = mod->includes; *inc; ++inc) {
-			rnstr_printf(a, " -I\"%s/%s\"", project_dir, *inc);
+			strbuf_printf(a, " -I%s", sh_quote(a, rnstr_path(a, project_dir, *inc, NULL)));
 		}
 	}
 
@@ -110,9 +111,40 @@ collect_module_includes(Arena *a, const Module *mod, const char *project_dir, us
 	}
 }
 
+// Optional collector so callers can get module source paths instead of having
+// them printed straight into the command string (needed for per-object
+// static library compilation).
+typedef struct {
+	const char **items;
+	usize		 count;
+	usize		 cap;
+} StrList;
+
+static void strlist_free(StrList *l)
+{
+	free(l->items);
+	l->items = NULL;
+	l->count = 0;
+	l->cap = 0;
+}
+
+static bool strlist_push(Arena *a, StrList *l, const char *s)
+{
+	if (l->count == l->cap) {
+		usize ncap = l->cap ? l->cap * 2 : 32;
+		const char **ni = realloc(l->items, ncap * sizeof(const char *));
+		if (!ni)
+			return false;
+		l->items = ni;
+		l->cap = ncap;
+	}
+	l->items[l->count++] = rnstr_dup(a, s);
+	return true;
+}
+
 static Result collect_module_sources(
 	Arena *a, const Module *mod, const char *project_dir, const char *full_root_path,
-	bool *root_appended, usize *total_sources, usize depth
+	bool *root_appended, usize *total_sources, usize depth, StrList *src_list
 ) {
 	if (!mod || depth > 16)
 		return Ok(NULL);
@@ -134,7 +166,12 @@ static Result collect_module_sources(
 				if (full_root_path && strcmp(g.gl_pathv[k], full_root_path) == 0) {
 					*root_appended = true;
 				}
-				rnstr_printf(a, " \"%s\"", g.gl_pathv[k]);
+				if (src_list) {
+					Try(strlist_push(a, src_list, g.gl_pathv[k]) ? Ok(NULL) :
+																   Err(ERR_OUT_OF_MEMORY));
+				} else {
+					strbuf_printf(a, " %s", sh_quote(a, g.gl_pathv[k]));
+				}
 				(*total_sources)++;
 			}
 		}
@@ -144,7 +181,7 @@ static Result collect_module_sources(
 		for (usize i = 0; mod->mods[i]; ++i) {
 			Try(collect_module_sources(
 				a, mod->mods[i], project_dir, full_root_path, root_appended, total_sources,
-				depth + 1
+				depth + 1, src_list
 			));
 		}
 	}
@@ -152,25 +189,37 @@ static Result collect_module_sources(
 	return Ok(NULL);
 }
 
+static void append_profile_flags(Arena *a, const char *profile)
+{
+	const char *p = (profile && profile[0]) ? profile : "debug";
+	if (strcmp(p, "debug") == 0) {
+		strbuf_printf(a, " -g");
+	} else if (strcmp(p, "release") == 0) {
+		strbuf_printf(a, " -O2 -DNDEBUG");
+	}
+	// Named custom profiles carry no implicit toolchain flags; they surface
+	// through NOUR_BUILD_PROFILE / NOUR_PROFILE_<NAME> macros only.
+}
+
 static void append_lib_compile_flags(Arena *a, const Library *lib, const char *project_dir)
 {
 	if (lib->cflags) {
 		for (const char **f = lib->cflags; *f; ++f) {
-			rnstr_printf(a, " %s", *f);
+			strbuf_printf(a, " %s", *f);
 		}
 	}
 
-	rnstr_printf(a, " -I\"%s/.nour\"", project_dir);
+	strbuf_printf(a, " -I%s", sh_quote(a, rnstr_path(a, project_dir, ".nour", NULL)));
 
 	if (lib->includes) {
 		for (const char **inc = lib->includes; *inc; ++inc) {
-			rnstr_printf(a, " -I\"%s/%s\"", project_dir, *inc);
+			strbuf_printf(a, " -I%s", sh_quote(a, rnstr_path(a, project_dir, *inc, NULL)));
 		}
 	}
 
 	if (lib->public_includes) {
 		for (const char **inc = lib->public_includes; *inc; ++inc) {
-			rnstr_printf(a, " -I\"%s/%s\"", project_dir, *inc);
+			strbuf_printf(a, " -I%s", sh_quote(a, rnstr_path(a, project_dir, *inc, NULL)));
 		}
 	}
 
@@ -182,20 +231,71 @@ static void append_lib_compile_flags(Arena *a, const Library *lib, const char *p
 
 	if (lib->defines) {
 		for (const char **d = lib->defines; *d; ++d) {
-			rnstr_printf(a, " -D%s", *d);
+			strbuf_printf(a, " -D%s", sh_quote(a, *d));
 		}
 	}
 
 	if (lib->public_defines) {
 		for (const char **d = lib->public_defines; *d; ++d) {
-			rnstr_printf(a, " -D%s", *d);
+			strbuf_printf(a, " -D%s", sh_quote(a, *d));
 		}
 	}
 }
 
-static Result
-build_library(const Library *lib, const Project *proj, const char *project_dir, const char *profile)
+static const char *lib_archive_prefix(const char *name)
 {
+	return (strncmp(name, "lib", 3) == 0) ? "" : "lib";
+}
+
+static void append_public_flags(Arena *a, const DepTransitive *trans, const char *project_dir)
+{
+	for (usize i = 0; i < trans->num_includes; ++i) {
+		strbuf_printf(
+			a, " -I%s", sh_quote(a, rnstr_path(a, project_dir, trans->public_includes[i], NULL))
+		);
+	}
+	for (usize i = 0; i < trans->num_defines; ++i) {
+		strbuf_printf(a, " -D%s", sh_quote(a, trans->public_defines[i]));
+	}
+}
+
+static void append_dep_linkargs(
+	Arena *a, const DepTransitive *trans, const char *project_dir, const char *build_dir
+) {
+	// Static archives: dependents before dependencies (trans order).
+	for (usize i = 0; i < trans->num_static_libs; ++i) {
+		const Library *l = trans->static_libs[i];
+		strbuf_printf(
+			a, " %s",
+			sh_quote(
+				a, rnstr_path(
+					   a, project_dir, build_dir,
+					   rnstr_sprintf(a, "%s%s.a", lib_archive_prefix(l->name), l->name), NULL
+				   )
+			)
+		);
+	}
+
+	// Shared libraries: -L + -l, with $ORIGIN rpath for sibling runtime layout.
+	if (trans->num_shared_libs > 0) {
+		strbuf_printf(a, " -L%s", sh_quote(a, rnstr_path(a, project_dir, build_dir, NULL)));
+		for (usize i = 0; i < trans->num_shared_libs; ++i) {
+			const Library *l = trans->shared_libs[i];
+			const char *lname = (strncmp(l->name, "lib", 3) == 0) ? l->name + 3 : l->name;
+			strbuf_printf(a, " -l%s", lname);
+		}
+		strbuf_printf(a, " -Wl,-rpath,'$ORIGIN'");
+	}
+
+	for (usize i = 0; i < trans->num_ldflags; ++i) {
+		strbuf_printf(a, " %s", trans->ldflags[i]);
+	}
+}
+
+static Result build_library(
+	const Library *lib, const Project *proj, const char *project_dir, const char *profile,
+	const DepTransitive *trans
+) {
 	const char *cc = (proj->cc && proj->cc[0]) ? proj->cc : "cc";
 	const char *build_dir = project_build_dir(proj);
 
@@ -217,43 +317,107 @@ build_library(const Library *lib, const Project *proj, const char *project_dir, 
 		Try(fs_create_dir(obj_dir));
 	}
 
-	rnstr_begin(&a);
+	StrList srcs __attribute__((cleanup(strlist_free))) = {0};
+	usize	total_sources = 0;
+	arena_scratch(fa, 4096);
+	const char *compile_flags = NULL;
+
+	strbuf_open(&a);
 
 	if (lib->type == STATIC) {
-		rnstr_printf(&a, "cd \"%s\" && %s -c", obj_dir, cc);
+		strbuf_printf(&a, "cd %s", sh_quote(&a, obj_dir));
 	} else if (lib->type == SHARED) {
-		rnstr_printf(&a, "%s -shared -fPIC -o \"%s\"", cc, out_path);
+		strbuf_printf(&a, "%s -shared -fPIC -o %s", cc, sh_quote(&a, out_path));
+
+		append_lib_compile_flags(&a, lib, project_dir);
+		append_public_flags(&a, trans, project_dir);
+		append_profile_flags(&a, profile);
+
+		// Shared libraries must resolve their own deps at link time; static
+		// archives defer everything to the final executable link.
+		append_dep_linkargs(&a, trans, project_dir, build_dir);
 	} else {
 		return Err(ERR_UNKNOWN_TARGET, lib->name);
 	}
 
-	append_lib_compile_flags(&a, lib, project_dir);
+	if (lib->type == STATIC) {
+		// Per-file compiles with unique object names: plain multi-source
+		// `cc -c` collides by basename (src/alice.c and tests/alice.c both
+		// produce alice.o) and silently loses code. Collect all source
+		// paths first (own sources + modules), then compile each one and
+		// archive exactly the objects we just produced — stale leftovers
+		// from earlier builds never enter the archive.
+		// (fa/srcs live at function scope: the archive tail below reads them.)
+		strbuf_open(&fa);
+		append_lib_compile_flags(&fa, lib, project_dir);
+		append_public_flags(&fa, trans, project_dir);
+		append_profile_flags(&fa, profile);
+		compile_flags = strbuf_finish(&fa);
 
-	usize total_sources = 0;
-	if (lib->sources) {
-		for (const char **src = lib->sources; *src; ++src) {
-			char pattern[PATH_MAX];
-			snprintf(pattern, sizeof(pattern), "%s/%s", project_dir, *src);
+		if (lib->sources) {
+			for (const char **src = lib->sources; *src; ++src) {
+				char pattern[PATH_MAX];
+				snprintf(pattern, sizeof(pattern), "%s/%s", project_dir, *src);
 
-			glob_t g;
-			i32 ret = glob(pattern, 0, NULL, &g);
-			if (ret) {
-				return Err(ERR_TARGET_NO_MATCH, lib->name, *src);
-			}
-			defer(globfree, &g);
+				glob_t g;
+				i32 ret = glob(pattern, 0, NULL, &g);
+				if (ret) {
+					return Err(ERR_TARGET_NO_MATCH, lib->name, *src);
+				}
+				defer(globfree, &g);
 
-			for (usize k = 0; k < (usize)g.gl_pathc; ++k) {
-				rnstr_printf(&a, " \"%s\"", g.gl_pathv[k]);
-				++total_sources;
+				for (usize k = 0; k < (usize)g.gl_pathc; ++k) {
+					Try(strlist_push(&fa, &srcs, g.gl_pathv[k]) ? Ok(NULL) :
+																  Err(ERR_OUT_OF_MEMORY));
+					++total_sources;
+				}
 			}
 		}
-	}
 
-	if (lib->mods) {
-		for (usize i = 0; lib->mods[i]; ++i) {
-			Try(
-				collect_module_sources(&a, lib->mods[i], project_dir, NULL, NULL, &total_sources, 0)
+		if (lib->mods) {
+			for (usize i = 0; lib->mods[i]; ++i) {
+				Try(collect_module_sources(
+					&fa, lib->mods[i], project_dir, NULL, NULL, &total_sources, 0, &srcs
+				));
+			}
+		}
+
+		for (usize k = 0; k < srcs.count; ++k) {
+			const char *base = strrchr(srcs.items[k], '/');
+			base = base ? base + 1 : srcs.items[k];
+			const char *obj_name = rnstr_sprintf(&a, "s%zu_%s.o", k, base);
+			strbuf_printf(
+				&a, " && %s -c %s -o %s %s", cc, sh_quote(&a, srcs.items[k]),
+				sh_quote(&a, obj_name), compile_flags
 			);
+		}
+	} else {
+		// SHARED: sources compiled straight into the shared object.
+		if (lib->sources) {
+			for (const char **src = lib->sources; *src; ++src) {
+				char pattern[PATH_MAX];
+				snprintf(pattern, sizeof(pattern), "%s/%s", project_dir, *src);
+
+				glob_t g;
+				i32 ret = glob(pattern, 0, NULL, &g);
+				if (ret) {
+					return Err(ERR_TARGET_NO_MATCH, lib->name, *src);
+				}
+				defer(globfree, &g);
+
+				for (usize k = 0; k < (usize)g.gl_pathc; ++k) {
+					strbuf_printf(&a, " %s", sh_quote(&a, g.gl_pathv[k]));
+					++total_sources;
+				}
+			}
+		}
+
+		if (lib->mods) {
+			for (usize i = 0; lib->mods[i]; ++i) {
+				Try(collect_module_sources(
+					&a, lib->mods[i], project_dir, NULL, NULL, &total_sources, 0, NULL
+				));
+			}
 		}
 	}
 
@@ -262,14 +426,22 @@ build_library(const Library *lib, const Project *proj, const char *project_dir, 
 	}
 
 	if (lib->type == STATIC) {
-		rnstr_printf(&a, " && ar rcs \"%s\" *.o && rm -f *.o", out_path);
+		// Archive exactly the objects produced above (never stale leftovers),
+		// with explicit names — no basename collisions possible.
+		strbuf_printf(&a, " && ar rcs %s", sh_quote(&a, out_path));
+		for (usize k = 0; k < srcs.count; ++k) {
+			const char *base = strrchr(srcs.items[k], '/');
+			base = base ? base + 1 : srcs.items[k];
+			strbuf_printf(&a, " %s", sh_quote(&a, rnstr_sprintf(&a, "s%zu_%s.o", k, base)));
+		}
+		strbuf_printf(&a, " && rm -f *.o");
 	} else if (lib->ldflags) {
 		for (const char **ld = lib->ldflags; *ld; ++ld) {
-			rnstr_printf(&a, " %s", *ld);
+			strbuf_printf(&a, " %s", *ld);
 		}
 	}
 
-	const char *cmd = rnstr_finish(&a);
+	const char *cmd = strbuf_finish(&a);
 	i32 status = system(cmd);
 	if (status) {
 		return Err(ERR_BUILD_FAILED, lib->name);
@@ -279,7 +451,8 @@ build_library(const Library *lib, const Project *proj, const char *project_dir, 
 }
 
 static Result build_executable(
-	const Executable *exe, const Project *proj, const char *project_dir, const char *profile
+	const Executable *exe, const Project *proj, const char *project_dir, const char *profile,
+	const DepTransitive *trans
 ) {
 	const char *cc = (proj->cc && proj->cc[0]) ? proj->cc : "cc";
 	const char *build_dir = project_build_dir(proj);
@@ -298,23 +471,23 @@ static Result build_executable(
 
 	const char *out_path = rnstr_path(&a, project_dir, build_dir, exe->name, NULL);
 
-	rnstr_begin(&a);
-	rnstr_printf(&a, "%s -o \"%s\"", cc, out_path);
+	strbuf_open(&a);
+	strbuf_printf(&a, "%s -o %s", cc, sh_quote(&a, out_path));
 
 	// Cflags
 	if (exe->cflags) {
 		for (const char **f = exe->cflags; *f; ++f) {
-			rnstr_printf(&a, " %s", *f);
+			strbuf_printf(&a, " %s", *f);
 		}
 	}
 
 	// Generated header include path (.nour)
-	rnstr_printf(&a, " -I\"%s/.nour\"", project_dir);
+	strbuf_printf(&a, " -I%s", sh_quote(&a, rnstr_path(&a, project_dir, ".nour", NULL)));
 
 	// Includes
 	if (exe->includes) {
 		for (const char **inc = exe->includes; *inc; ++inc) {
-			rnstr_printf(&a, " -I\"%s/%s\"", project_dir, *inc);
+			strbuf_printf(&a, " -I%s", sh_quote(&a, rnstr_path(&a, project_dir, *inc, NULL)));
 		}
 	}
 
@@ -328,9 +501,15 @@ static Result build_executable(
 	// Defines
 	if (exe->defines) {
 		for (const char **d = exe->defines; *d; ++d) {
-			rnstr_printf(&a, " -D%s", *d);
+			strbuf_printf(&a, " -D%s", sh_quote(&a, *d));
 		}
 	}
+
+	// Transitive include dirs / defines from dependencies.
+	append_public_flags(&a, trans, project_dir);
+
+	// Profile flags (debug -> -g, release -> -O2 -DNDEBUG).
+	append_profile_flags(&a, profile);
 
 	// Source files
 	if ((!exe->sources || !exe->sources[0]) && !root && (!exe->mods || !exe->mods[0])) {
@@ -354,7 +533,7 @@ static Result build_executable(
 				if (root && strcmp(g.gl_pathv[k], full_root_path) == 0) {
 					root_appended = true;
 				}
-				rnstr_printf(&a, " \"%s\"", g.gl_pathv[k]);
+				strbuf_printf(&a, " %s", sh_quote(&a, g.gl_pathv[k]));
 				++total_sources;
 			}
 		}
@@ -364,14 +543,15 @@ static Result build_executable(
 	if (exe->mods) {
 		for (usize i = 0; exe->mods[i]; ++i) {
 			Try(collect_module_sources(
-				&a, exe->mods[i], project_dir, full_root_path, &root_appended, &total_sources, 0
+				&a, exe->mods[i], project_dir, full_root_path, &root_appended, &total_sources, 0,
+				NULL
 			));
 		}
 	}
 
 	// If root wasn't already in sources glob, append it
 	if (root && !root_appended) {
-		rnstr_printf(&a, " \"%s\"", full_root_path);
+		strbuf_printf(&a, " %s", sh_quote(&a, full_root_path));
 		++total_sources;
 	}
 
@@ -382,12 +562,15 @@ static Result build_executable(
 	// Link flags
 	if (exe->ldflags) {
 		for (const char **ld = exe->ldflags; *ld; ++ld) {
-			rnstr_printf(&a, " %s", *ld);
+			strbuf_printf(&a, " %s", *ld);
 		}
 	}
 
+	// Dependency archives / shared libs / propagated ldflags.
+	append_dep_linkargs(&a, trans, project_dir, build_dir);
+
 	// Execute build
-	const char *cmd = rnstr_finish(&a);
+	const char *cmd = strbuf_finish(&a);
 	i32 status = system(cmd);
 	if (status) {
 		return Err(ERR_BUILD_FAILED, exe->name);
@@ -396,11 +579,21 @@ static Result build_executable(
 	return Ok(NULL);
 }
 
-Result build_project_target(
+Result build_target(
 	const Project *proj, const char *project_dir, const char *target_name, const char *profile
 ) {
 	if (!proj->targets) {
 		return Ok(NULL);
+	}
+
+	// Normalize to an absolute path: per-object compiles `cd` into .nour/obj,
+	// so cwd-relative source paths ("./src/x.c") would break afterwards.
+	char abs_dir[PATH_MAX];
+	char resolved[PATH_MAX];
+	if (realpath(project_dir, resolved)) {
+		project_dir = resolved;
+	} else if (snprintf(abs_dir, sizeof(abs_dir), "%s", project_dir) >= 0) {
+		project_dir = abs_dir; // keep original if the dir vanished mid-run
 	}
 
 	const char *build_dir = project_build_dir(proj);
@@ -409,31 +602,25 @@ Result build_project_target(
 	Result r = fs_create_dir(build_path);
 	Try(r);
 
-	if (target_name && target_name[0]) {
-		for (usize i = 0; proj->targets[i]; ++i) {
-			Target *target = (Target *)proj->targets[i];
-			if (strcmp(target->name, target_name) == 0) {
-				if (target->kind == T_EXECUTABLE) {
-					return build_executable((Executable *)target, proj, project_dir, profile);
-				} else if (target->kind == T_LIBRARY) {
-					return build_library((Library *)target, proj, project_dir, profile);
-				} else {
-					return Err(ERR_UNKNOWN_TARGET, target->name);
-				}
+	DepPlan plan = {0};
+	Try(deps_resolve(proj, target_name, &a, &plan));
+
+	for (usize i = 0; i < plan.count; ++i) {
+		Target *target = plan.targets[i];
+		{
+			// ta owns the transitive flag data for this build; it must
+			// outlive the build_c call below.
+			arena_scratch(ta, 4096);
+			DepTransitive trans = {0};
+			Try(deps_collect_transitive(proj, target, &ta, &trans));
+
+			if (target->kind == T_EXECUTABLE) {
+				Try(build_executable((Executable *)target, proj, project_dir, profile, &trans));
+			} else if (target->kind == T_LIBRARY) {
+				Try(build_library((Library *)target, proj, project_dir, profile, &trans));
+			} else {
+				return Err(ERR_UNKNOWN_TARGET, target->name);
 			}
-		}
-		return Err(ERR_TARGET_NOT_FOUND, target_name, proj->name);
-	}
-
-	for (usize i = 0; proj->targets[i]; ++i) {
-		Target *target = (Target *)proj->targets[i];
-
-		if (target->kind == T_EXECUTABLE) {
-			Try(build_executable((Executable *)target, proj, project_dir, profile));
-		} else if (target->kind == T_LIBRARY) {
-			Try(build_library((Library *)target, proj, project_dir, profile));
-		} else {
-			return Err(ERR_UNKNOWN_TARGET, target->name);
 		}
 	}
 
@@ -442,5 +629,5 @@ Result build_project_target(
 
 Result build_project(const Project *proj, const char *project_dir)
 {
-	return build_project_target(proj, project_dir, NULL, "debug");
+	return build_target(proj, project_dir, NULL, "debug");
 }

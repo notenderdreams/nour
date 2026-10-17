@@ -1,4 +1,0 @@
-Module advanced = {
-	.sources  = { "*.c" },
-	.includes = { "." },
-};

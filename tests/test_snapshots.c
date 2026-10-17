@@ -121,7 +121,7 @@ void run_snapshot_tests(const char *filter)
 
 		u64 start_ns = tf_time_ns();
 		bool passed = true;
-		char err_buf[256] = { 0 };
+		char err_buf[256] = {0};
 
 		Result res = preprocess(input_path, actual_path);
 		if (!res.ok) {
@@ -151,7 +151,9 @@ void run_snapshot_tests(const char *filter)
 			} else {
 				if (!expected_content) {
 					passed = false;
-					snprintf(err_buf, sizeof(err_buf), "Missing expected.c (bless: just test-bless)");
+					snprintf(
+						err_buf, sizeof(err_buf), "Missing expected.c (bless: just test-bless)"
+					);
 				} else if (strcmp(actual_content, expected_content) != 0) {
 					passed = false;
 					first_diff(actual_content, expected_content, err_buf, sizeof(err_buf));

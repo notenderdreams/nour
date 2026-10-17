@@ -31,7 +31,9 @@ Arena arena_new(usize default_block_cap)
 		.first			   = NULL,
 		.current		   = NULL,
 		.default_block_cap = default_block_cap ? default_block_cap : ARENA_DEFAULT_BLOCK_CAP,
-		.str_start		   = 0,
+		.str_buf		   = NULL,
+		.str_len		   = 0,
+		.str_cap		   = 0,
 		.in_str			   = false,
 	};
 }
@@ -87,22 +89,34 @@ void *arena_alloc(Arena *a, usize size)
 	return arena_alloc_align(a, size, ARENA_DEFAULT_ALIGNMENT);
 }
 
+static void arena_drop_string(Arena *a)
+{
+	/* A half-built string is transient; it dies with any rollback. */
+	if (a->str_buf) {
+		free(a->str_buf);
+		a->str_buf = NULL;
+	}
+	a->str_len = 0;
+	a->str_cap = 0;
+	a->in_str = false;
+}
+
 void arena_reset(Arena *a)
 {
 	if (!a)
 		return;
+	arena_drop_string(a);
 	for (ArenaBlock *b = a->first; b; b = b->next) {
 		b->len = 0;
 	}
 	a->current = a->first;
-	a->str_start = 0;
-	a->in_str = false;
 }
 
 void arena_destroy(Arena *a)
 {
 	if (!a)
 		return;
+	arena_drop_string(a);
 	ArenaBlock *b = a->first;
 	while (b) {
 		ArenaBlock *next = b->next;
@@ -111,8 +125,6 @@ void arena_destroy(Arena *a)
 	}
 	a->first = NULL;
 	a->current = NULL;
-	a->str_start = 0;
-	a->in_str = false;
 }
 
 char *rnstr_dup(Arena *a, const char *s)
@@ -234,135 +246,117 @@ char *rnstr_path(Arena *a, ...)
 	return dst;
 }
 
-void rnstr_begin(Arena *a)
+/* ─── Incremental String Building (rnstr_*) ───
+ *
+ * The string under construction lives in a private heap buffer owned by the
+ * arena. This keeps building fully independent of arena block switches:
+ * interleaving arena_alloc / rnstr_sprintf while a string is open can never
+ * corrupt it, and unreachable-on-growth logic can't miscompute offsets.
+ */
+
+/* Ensure room for `room` additional string bytes (+1 terminator). */
+static bool rnstr_reserve(Arena *a, usize room)
+{
+	if (!a->in_str) {
+		a->str_buf = NULL;
+		a->str_len = 0;
+		a->str_cap = 0;
+		a->in_str = true;
+	}
+
+	usize needed = a->str_len + room + 1;
+	if (needed <= a->str_cap)
+		return true;
+
+	usize ncap = a->str_cap ? a->str_cap : 256;
+	while (ncap < needed)
+		ncap *= 2;
+
+	char *nb = realloc(a->str_buf, ncap);
+	if (!nb)
+		return false;
+	a->str_buf = nb;
+	a->str_cap = ncap;
+	return true;
+}
+
+void strbuf_open(Arena *a)
 {
 	if (!a)
 		return;
-	if (!a->current) {
-		usize cap = a->default_block_cap ? a->default_block_cap : ARENA_DEFAULT_BLOCK_CAP;
-		a->first = arena_block_new(cap);
-		a->current = a->first;
-	}
-	if (!a->current)
+	/* Beginning while a string is already open continues it instead of
+	 * clobbering the in-flight buffer. */
+	if (a->in_str)
 		return;
-	a->str_start = a->current->len;
+	a->str_buf = NULL;
+	a->str_len = 0;
+	a->str_cap = 0;
 	a->in_str = true;
 }
 
-void rnstr_appendsv(Arena *a, StrView sv)
+void strbuf_appendsv(Arena *a, StrView sv)
 {
 	if (!a || !sv.data || sv.len == 0)
 		return;
-	if (!a->in_str)
-		rnstr_begin(a);
-	if (!a->current)
+	if (!rnstr_reserve(a, sv.len))
 		return;
-
-	usize avail = (a->current->cap > a->current->len) ? (a->current->cap - a->current->len) : 0;
-
-	if (avail >= sv.len + 1) {
-		memcpy(a->current->data + a->current->len, sv.data, sv.len);
-		a->current->len += sv.len;
-		return;
-	}
-
-	usize cur_len = a->current->len - a->str_start;
-	usize needed = cur_len + sv.len + 1;
-	usize next_cap = a->default_block_cap > needed ? a->default_block_cap : needed * 2;
-	ArenaBlock *nb = arena_block_new(next_cap);
-	if (!nb)
-		return;
-
-	if (cur_len > 0) {
-		memcpy(nb->data, a->current->data + a->str_start, cur_len);
-	}
-	memcpy(nb->data + cur_len, sv.data, sv.len);
-	nb->len = cur_len + sv.len;
-
-	a->current->next = nb;
-	a->current = nb;
-	a->str_start = 0;
+	memcpy(a->str_buf + a->str_len, sv.data, sv.len);
+	a->str_len += sv.len;
 }
 
-void rnstr_append(Arena *a, const char *s)
+void strbuf_append(Arena *a, const char *s)
 {
 	if (!a || !s || !*s)
 		return;
-	rnstr_appendsv(a, sv_fromc(s));
+	strbuf_appendsv(a, sv_fromc(s));
 }
 
-void rnstr_putc(Arena *a, char c)
+void strbuf_putc(Arena *a, char c)
 {
-	char buf[1] = { c };
-	rnstr_appendsv(a, sv_new(buf, 1));
+	char buf[1] = {c};
+	strbuf_appendsv(a, sv_new(buf, 1));
 }
 
-void rnstr_printf(Arena *a, const char *fmt, ...)
+void strbuf_printf(Arena *a, const char *fmt, ...)
 {
 	if (!a || !fmt)
-		return;
-	if (!a->in_str)
-		rnstr_begin(a);
-	if (!a->current)
 		return;
 
 	va_list ap, ap_copy;
 	va_start(ap, fmt);
-	va_copy(ap_copy, ap);
-
-	usize avail = (a->current->cap > a->current->len) ? (a->current->cap - a->current->len) : 0;
-	int needed =
-		vsnprintf(avail > 0 ? (char *)(a->current->data + a->current->len) : NULL, avail, fmt, ap);
+	i32 needed = vsnprintf(NULL, 0, fmt, ap);
 	va_end(ap);
-
-	if (needed < 0) {
-		va_end(ap_copy);
+	if (needed < 0)
 		return;
-	}
 
-	if ((usize)needed < avail) {
-		a->current->len += (usize)needed;
-		va_end(ap_copy);
+	if (!rnstr_reserve(a, (usize)needed))
 		return;
-	}
 
-	usize cur_len = a->current->len - a->str_start;
-	usize total_needed = cur_len + (usize)needed + 1;
-	usize next_cap = a->default_block_cap > total_needed ? a->default_block_cap : total_needed * 2;
-	ArenaBlock *nb = arena_block_new(next_cap);
-	if (!nb) {
-		va_end(ap_copy);
-		return;
-	}
-
-	if (cur_len > 0) {
-		memcpy(nb->data, a->current->data + a->str_start, cur_len);
-	}
-
-	vsnprintf((char *)(nb->data + cur_len), (usize)needed + 1, fmt, ap_copy);
+	va_start(ap_copy, fmt);
+	vsnprintf(a->str_buf + a->str_len, (usize)needed + 1, fmt, ap_copy);
 	va_end(ap_copy);
 
-	nb->len = cur_len + (usize)needed;
-	a->current->next = nb;
-	a->current = nb;
-	a->str_start = 0;
+	a->str_len += (usize)needed;
 }
 
-const char *rnstr_finish(Arena *a)
+const char *strbuf_finish(Arena *a)
 {
-	if (!a || !a->in_str || !a->current)
+	if (!a || !a->in_str)
 		return "";
 
-	if (a->current->len < a->current->cap) {
-		a->current->data[a->current->len] = '\0';
-		a->current->len += 1;
-	} else {
-		rnstr_putc(a, '\0');
+	char *out = arena_alloc_align(a, a->str_len + 1, 1);
+	if (out) {
+		if (a->str_len > 0) {
+			memcpy(out, a->str_buf, a->str_len);
+		}
+		out[a->str_len] = '\0';
 	}
 
-	const char *result = (const char *)(a->current->data + a->str_start);
+	free(a->str_buf);
+	a->str_buf = NULL;
+	a->str_len = 0;
+	a->str_cap = 0;
 	a->in_str = false;
-	a->str_start = 0;
-	a->current->len = align_forward(a->current->len, ARENA_DEFAULT_ALIGNMENT);
-	return result;
+
+	return out ? out : "";
 }

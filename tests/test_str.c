@@ -7,7 +7,7 @@ TEST(StrView, creation_and_predicates)
 {
 	StrView lit = SV("hello");
 	ASSERT_EQ(lit.len, 5);
-	ASSERT_TRUE(sv_eqc(lit, "hello"));
+	ASSERT_TRUE(sv_eq_cstr(lit, "hello"));
 	ASSERT_FALSE(sv_empty(lit));
 
 	StrView empty = SV("");
@@ -23,7 +23,7 @@ TEST(StrView, creation_and_predicates)
 
 	StrView from_new = sv_new("abcdef", 3);
 	ASSERT_EQ(from_new.len, 3);
-	ASSERT_TRUE(sv_eqc(from_new, "abc"));
+	ASSERT_TRUE(sv_eq_cstr(from_new, "abc"));
 }
 
 TEST(StrView, comparison_and_matching)
@@ -41,8 +41,8 @@ TEST(StrView, comparison_and_matching)
 	ASSERT_TRUE(sv_contains(SV("hello world"), SV("hello")));
 	ASSERT_TRUE(sv_contains(SV("hello world"), SV("lo wo")));
 	ASSERT_FALSE(sv_contains(SV("hello world"), SV("xyz")));
-	ASSERT_TRUE(sv_containsc(SV("targets = { .deps }"), ".deps"));
-	ASSERT_FALSE(sv_containsc(SV("targets = { .deps }"), ".flags"));
+	ASSERT_TRUE(sv_contains_cstr(SV("targets = { .deps }"), ".deps"));
+	ASSERT_FALSE(sv_contains_cstr(SV("targets = { .deps }"), ".flags"));
 
 	// sv_cmp
 	ASSERT_EQ(sv_cmp(SV("apple"), SV("apple")), 0);
