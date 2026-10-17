@@ -295,7 +295,7 @@ static Result execute_project_build(
 	ui_success("Finished build in %s", dur_str);
 
 	// Record clean manifest in .nour directory
-	const char *clean_file = rnstr_sprintf(&a, "%s/.nour/clean.txt", project_dir);
+	const char *clean_file = rnstr_sprintf(&a, "%s/.nour/clean", project_dir);
 	FILE *cf = fopen(clean_file, "w");
 	if (cf) {
 		defer(fclose, cf);
@@ -422,7 +422,9 @@ Result cmd_clean(Context *ctx)
 
 	arena_scratch(a, 4096);
 
-	const char *clean_manifest = rnstr_sprintf(&a, "%s/.nour/clean.txt", project_dir);
+	usize failures = 0;
+
+	const char *clean_manifest = rnstr_sprintf(&a, "%s/.nour/clean", project_dir);
 	FILE *f = fopen(clean_manifest, "r");
 	if (f) {
 		defer(fclose, f);
@@ -434,15 +436,18 @@ Result cmd_clean(Context *ctx)
 
 			char *rel = rnstr_sprintf(&a, "%.*s", (int)trimmed.len, trimmed.data);
 			if (!is_safe_rel_path(rel)) {
-				return Err("refusing to remove unsafe path '%s' listed in clean.txt", rel);
+				return Err("refusing to remove unsafe path '%s' listed in clean", rel);
 			}
 
 			const char *tpath =
 				rnstr_sprintf(&a, "%s/%.*s", project_dir, (int)trimmed.len, trimmed.data);
 
 			if (fs_dir_exists(tpath)) {
-				Try(fs_remove_dir(tpath));
-				ui_status("Removed", "%s/", tpath);
+				Result r = fs_remove_dir(tpath);
+				if (r.ok)
+					ui_status("Removed", "%s/", tpath);
+				else
+					failures++;
 			} else if (fs_file_exists(tpath)) {
 				remove(tpath);
 				ui_status("Removed", "%s", tpath);
@@ -452,15 +457,26 @@ Result cmd_clean(Context *ctx)
 
 	const char *dot_nour_dir = rnstr_sprintf(&a, "%s/.nour", project_dir);
 	if (fs_dir_exists(dot_nour_dir)) {
-		Try(fs_remove_dir(dot_nour_dir));
-		ui_status("Removed", "%s/", dot_nour_dir);
+		Result r = fs_remove_dir(dot_nour_dir);
+		if (r.ok)
+			ui_status("Removed", "%s/", dot_nour_dir);
+		else
+			failures++;
 	}
 
 	const char *default_build_dir = rnstr_sprintf(&a, "%s/build", project_dir);
 	if (fs_dir_exists(default_build_dir)) {
-		Try(fs_remove_dir(default_build_dir));
-		ui_status("Removed", "%s/", default_build_dir);
+		Result r = fs_remove_dir(default_build_dir);
+		if (r.ok)
+			ui_status("Removed", "%s/", default_build_dir);
+		else
+			failures++;
 	}
+
+	// One locked file (opened in an editor, etc.) must not stop the rest of
+	// the clean; report and fail only at the end.
+	if (failures)
+		return Err("failed to remove %zu directories during clean", failures);
 
 	return Ok(NULL);
 }
