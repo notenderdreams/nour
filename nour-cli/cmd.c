@@ -304,7 +304,9 @@ static Result execute_project_build(
 
 	if (out_bin && out_bin_cap > 0) {
 		out_bin[0] = '\0';
-		const char *bdir = project_build_dir(proj);
+		char out_dir_buf[128];
+		project_out_dir(out_dir_buf, sizeof(out_dir_buf), proj, profile);
+		const char *bdir = out_dir_buf;
 		const char *resolved_target = NULL;
 
 		if (matched_target) {

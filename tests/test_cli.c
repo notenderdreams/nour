@@ -228,7 +228,7 @@ TEST(CLI, build_run_and_clean_workflow)
 	ASSERT_STR_CONTAINS(out.stdout_str, "Finished build");
 
 	char bin_file[512];
-	snprintf(bin_file, sizeof(bin_file), "%s/calc_app/build/calc_app", td.path);
+	snprintf(bin_file, sizeof(bin_file), "%s/calc_app/build/debug/calc_app", td.path);
 	ASSERT_TRUE(access(bin_file, X_OK) == 0);
 
 	char so_file[512];

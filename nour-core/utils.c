@@ -11,8 +11,24 @@ const char *section_banner(const char *name)
 	return buf;
 }
 
+/* Profile names label directories and shell commands: allow only safe
+ * identifier-ish characters so they can never inject into either. */
+bool is_valid_profile(const char *name)
+{
+	if (!name || !name[0])
+		return false;
+	for (const char *p = name; *p; ++p) {
+		if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') ||
+			  *p == '_' || *p == '-')) {
+			return false;
+		}
+	}
+	return true;
+}
+
 bool is_valid_name(const char *name)
 {
+
 	if (!name || (!isalpha((unsigned char)*name) && *name != '_'))
 		return false;
 	for (const char *p = name + 1; *p; ++p) {

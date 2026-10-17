@@ -52,7 +52,7 @@ TEST(Builder, build_executable_with_explicit_root)
 	ASSERT_RESULT_OK(res);
 
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/build/my_app", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/build/debug/my_app", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 
 	char run_cmd[600];
@@ -85,7 +85,7 @@ TEST(Builder, build_executable_default_root_fallback)
 	ASSERT_RESULT_OK(res);
 
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/out/fallback_app", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/out/debug/fallback_app", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 
 	char run_cmd[600];
@@ -116,7 +116,7 @@ TEST(Builder, build_executable_root_in_sources_dedup)
 	ASSERT_RESULT_OK(res);
 
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/bin/dedup_app", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/bin/debug/dedup_app", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 
 	char run_cmd[600];
@@ -232,7 +232,7 @@ TEST(Builder, build_static_library)
 	ASSERT_RESULT_OK(res);
 
 	char lib_path[512];
-	snprintf(lib_path, sizeof(lib_path), "%s/build/libcalc.a", td.path);
+	snprintf(lib_path, sizeof(lib_path), "%s/build/debug/libcalc.a", td.path);
 	ASSERT_TRUE(access(lib_path, F_OK) == 0);
 
 	// Test linking against the produced archive
@@ -243,13 +243,13 @@ TEST(Builder, build_static_library)
 	);
 	char compile_cmd[1024];
 	snprintf(
-		compile_cmd, sizeof(compile_cmd), "cc \"%s/src/main.c\" \"%s\" -o \"%s/build/test_app\"",
+		compile_cmd, sizeof(compile_cmd), "cc \"%s/src/main.c\" \"%s\" -o \"%s/build/debug/test_app\"",
 		td.path, lib_path, td.path
 	);
 	ASSERT_EQ(system(compile_cmd), 0);
 
 	char run_cmd[512];
-	snprintf(run_cmd, sizeof(run_cmd), "\"%s/build/test_app\"", td.path);
+	snprintf(run_cmd, sizeof(run_cmd), "\"%s/build/debug/test_app\"", td.path);
 	ASSERT_EQ(system(run_cmd), 0);
 }
 
@@ -275,7 +275,7 @@ TEST(Builder, build_shared_library)
 	ASSERT_RESULT_OK(res);
 
 	char lib_path[512];
-	snprintf(lib_path, sizeof(lib_path), "%s/build/libops.so", td.path);
+	snprintf(lib_path, sizeof(lib_path), "%s/build/debug/libops.so", td.path);
 	ASSERT_TRUE(access(lib_path, F_OK) == 0);
 
 	// Load shared library and call its function
@@ -318,7 +318,7 @@ TEST(Builder, build_library_with_modules)
 	ASSERT_RESULT_OK(res);
 
 	char lib_path[512];
-	snprintf(lib_path, sizeof(lib_path), "%s/build/libmylib.a", td.path);
+	snprintf(lib_path, sizeof(lib_path), "%s/build/debug/libmylib.a", td.path);
 	ASSERT_TRUE(access(lib_path, F_OK) == 0);
 
 	// Test linking against archive and calling module-dependent function
@@ -329,13 +329,13 @@ TEST(Builder, build_library_with_modules)
 	);
 	char compile_cmd[1024];
 	snprintf(
-		compile_cmd, sizeof(compile_cmd), "cc \"%s/src/main.c\" \"%s\" -o \"%s/build/test_app\"",
+		compile_cmd, sizeof(compile_cmd), "cc \"%s/src/main.c\" \"%s\" -o \"%s/build/debug/test_app\"",
 		td.path, lib_path, td.path
 	);
 	ASSERT_EQ(system(compile_cmd), 0);
 
 	char run_cmd[512];
-	snprintf(run_cmd, sizeof(run_cmd), "\"%s/build/test_app\"", td.path);
+	snprintf(run_cmd, sizeof(run_cmd), "\"%s/build/debug/test_app\"", td.path);
 	ASSERT_EQ(system(run_cmd), 0);
 }
 
@@ -383,7 +383,7 @@ TEST(Builder, generated_config_header_and_profiles)
 
 	// Verify compiled binary runs and all assertions in main() passed
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/build/config_bin", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/build/staging/config_bin", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 
 	char run_cmd[600];
@@ -428,7 +428,7 @@ TEST(Builder, build_executable_with_static_library_dep)
 	ASSERT_RESULT_OK(res);
 
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/build/dep_app", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/build/debug/dep_app", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 	ASSERT_EQ(system(bin_path), 0);
 }
@@ -486,7 +486,7 @@ TEST(Builder, build_executable_transitive_static_deps)
 	ASSERT_RESULT_OK(res);
 
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/build/chain_app", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/build/debug/chain_app", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 	ASSERT_EQ(system(bin_path), 0);
 }
@@ -525,7 +525,7 @@ TEST(Builder, build_executable_with_shared_library_dep)
 	ASSERT_RESULT_OK(res);
 
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/build/shared_app", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/build/debug/shared_app", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 	ASSERT_EQ(system(bin_path), 0);
 }
@@ -590,16 +590,16 @@ TEST(Builder, build_selective_target_with_deps)
 
 	// target1 and its dependency lib1 are built...
 	char t1_path[512];
-	snprintf(t1_path, sizeof(t1_path), "%s/build/target1", td.path);
+	snprintf(t1_path, sizeof(t1_path), "%s/build/debug/target1", td.path);
 	ASSERT_TRUE(access(t1_path, F_OK) == 0);
 	// lib1's name already starts with "lib", so no extra prefix is applied
 	char lib1_path[512];
-	snprintf(lib1_path, sizeof(lib1_path), "%s/build/lib1.a", td.path);
+	snprintf(lib1_path, sizeof(lib1_path), "%s/build/debug/lib1.a", td.path);
 	ASSERT_TRUE(access(lib1_path, F_OK) == 0);
 
 	// ...but unrelated target2 must NOT be built
 	char t2_path[512];
-	snprintf(t2_path, sizeof(t2_path), "%s/build/target2", td.path);
+	snprintf(t2_path, sizeof(t2_path), "%s/build/debug/target2", td.path);
 	ASSERT_TRUE(access(t2_path, F_OK) != 0);
 }
 
@@ -640,7 +640,7 @@ TEST(Builder, static_library_basename_collision)
 	ASSERT_RESULT_OK(res);
 
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/build/collide_app", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/build/debug/collide_app", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 	ASSERT_EQ(system(bin_path), 0);
 }
@@ -666,13 +666,19 @@ TEST(Builder, release_profile_compiles_and_runs)
 	ASSERT_RESULT_OK(res);
 
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/build/rel_app", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/build/release/rel_app", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 	ASSERT_EQ(system(bin_path), 0);
 
-	// Same for debug profile
+	// Same for debug profile — must land in build/debug, NOT clobber release
 	res = build_target(&proj, td.path, NULL, "debug");
 	ASSERT_RESULT_OK(res);
+	ASSERT_TRUE(access(bin_path, F_OK) == 0); // release binary untouched
+
+	char dbg_path[512];
+	snprintf(dbg_path, sizeof(dbg_path), "%s/build/debug/rel_app", td.path);
+	ASSERT_TRUE(access(dbg_path, F_OK) == 0);
+
 }
 
 TEST(Builder, build_executable_with_modules)
@@ -728,7 +734,7 @@ TEST(Builder, build_executable_with_modules)
 	ASSERT_RESULT_OK(res);
 
 	char bin_path[512];
-	snprintf(bin_path, sizeof(bin_path), "%s/bin/mod_app", td.path);
+	snprintf(bin_path, sizeof(bin_path), "%s/bin/debug/mod_app", td.path);
 	ASSERT_TRUE(access(bin_path, F_OK) == 0);
 
 	char run_cmd[600];

@@ -32,7 +32,9 @@ Result generate_config_header(
 
 	const char *proj_name = (proj->name && proj->name[0]) ? proj->name : "app";
 	const char *proj_ver = (proj->version && proj->version[0]) ? proj->version : "0.1.0";
-	const char *build_dir = project_build_dir(proj);
+	char od_buf[96];
+	project_out_dir(od_buf, sizeof(od_buf), proj, profile);
+	const char *build_dir = od_buf;
 	const char *tgt_name = (target && target->name) ? target->name : proj_name;
 	const char *tgt_kind = (target && target->kind == T_LIBRARY) ? "library" : "executable";
 
@@ -297,7 +299,11 @@ static Result build_library(
 	const DepTransitive *trans
 ) {
 	const char *cc = (proj->cc && proj->cc[0]) ? proj->cc : "cc";
-	const char *build_dir = project_build_dir(proj);
+
+	// Outputs live under <build_dir>/<profile> so profiles never collide.
+	char out_dir_buf[96];
+	project_out_dir(out_dir_buf, sizeof(out_dir_buf), proj, profile);
+	const char *build_dir = out_dir_buf;
 
 	Try(generate_config_header(proj, (const Target *)lib, project_dir, profile));
 
@@ -455,7 +461,11 @@ static Result build_executable(
 	const DepTransitive *trans
 ) {
 	const char *cc = (proj->cc && proj->cc[0]) ? proj->cc : "cc";
-	const char *build_dir = project_build_dir(proj);
+
+	// Outputs live under <build_dir>/<profile> so profiles never collide.
+	char out_dir_buf[96];
+	project_out_dir(out_dir_buf, sizeof(out_dir_buf), proj, profile);
+	const char *build_dir = out_dir_buf;
 
 	Try(generate_config_header(proj, (const Target *)exe, project_dir, profile));
 
@@ -586,6 +596,12 @@ Result build_target(
 		return Ok(NULL);
 	}
 
+	// Profiles label directories and shell commands — forbid anything
+	// that could inject into either.
+	if (profile && profile[0] && !is_valid_profile(profile)) {
+		return Err("invalid profile name '%s'", profile);
+	}
+
 	// Normalize to an absolute path: per-object compiles `cd` into .nour/obj,
 	// so cwd-relative source paths ("./src/x.c") would break afterwards.
 	char abs_dir[PATH_MAX];
@@ -596,7 +612,10 @@ Result build_target(
 		project_dir = abs_dir; // keep original if the dir vanished mid-run
 	}
 
-	const char *build_dir = project_build_dir(proj);
+	char prof_buf[96];
+	project_out_dir(prof_buf, sizeof(prof_buf), proj, profile);
+
+	const char *build_dir = prof_buf;
 	arena_scratch(a, 256);
 	const char *build_path = rnstr_sprintf(&a, "%s/%s", project_dir, build_dir);
 	Result r = fs_create_dir(build_path);

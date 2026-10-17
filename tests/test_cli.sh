@@ -91,7 +91,7 @@ test_assert "new duplicate rejection" 1 "cd '${NEW_DIR}' && '${NOUR_BIN}' new te
 
 # 5. Build, Run, Clean Workflow
 test_assert "build new project" 0 "'${NOUR_BIN}' build '${NEW_DIR}/test_app'" "Finished build"
-test_assert "build artifact exists" 0 "test -x '${NEW_DIR}/test_app/build/test_app' && test -f '${NEW_DIR}/test_app/.nour/libnour.so'"
+test_assert "build artifact exists" 0 "test -x '${NEW_DIR}/test_app/build/debug/test_app' && test -f '${NEW_DIR}/test_app/.nour/libnour.so'"
 test_assert "run project" 0 "'${NOUR_BIN}' run '${NEW_DIR}/test_app'" "Hello, test_app!"
 test_assert "clean project" 0 "'${NOUR_BIN}' clean '${NEW_DIR}/test_app'" "Removed"
 test_assert "clean removed build directory" 0 "! test -d '${NEW_DIR}/test_app/build' && ! test -d '${NEW_DIR}/test_app/.nour'"
